@@ -1,0 +1,14 @@
+{
+  "name": "@local/dsh-subagent-newest-first",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Show the newest subagents first in the existing catalog.",
+  "engines": { "dsh": "0.2.2-alpha.2" },
+  "exports": { ".": "./index.js", "./client": "./client.js", "./locale/*.json": "./locale/*.json", "./icon": "./icon.svg" },
+  "files": ["index.js", "client.js", "cordis.patch.yml", "locale/*.json", "icon.svg"],
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": { "platform": "web", "immediately": true, "inject": ["@deepseek-ai/dsh-client-ui-subagent"] }
+  }
+}

@@ -1,0 +1,45 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { apply } from './host.js'
+
+// This optional integration test uses the already available shipped-artifact copy.
+// Override DSH_NODE_MODULES to test against a different unpacked runtime.
+const runtime = process.env.DSH_NODE_MODULES ?? '../codex-fast-prototype/plugin-bundle/.installed-artifacts/desktop-CxMOMA/dsh/node_modules/@deepseek-ai'
+const { DomainFacility } = await import(`${runtime}/dsh-storage-domain/lib/index.js`)
+const { JsonStorageBackend } = await import(`${runtime}/dsh-storage-json/lib/index.js`)
+
+test('actual storageDomain + JSON backend persists and reopens after teardown', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-backlog-test-'))
+  try {
+    const makeRuntime = async () => {
+      const backend = new JsonStorageBackend(root)
+      const domainCtx = { storage: { backend: { get: () => backend } }, events: { emit() {} }, logger: { warn() {} } }
+      const facility = new DomainFacility(domainCtx, { backend: 'json' })
+      let command
+      const effects = []
+      const ctx = { storageDomain: facility, commands: { register(value) { command = value; return () => {} } }, tools: { register() { return () => {} } }, effect(fn) { effects.push(fn()) } }
+      await apply(ctx)
+      return { command, async close() { for (const dispose of effects.reverse()) await dispose(); await backend.close() } }
+    }
+    let runtime = await makeRuntime()
+    const invoke = async (session, request) => JSON.parse((await runtime.command.handler({ agent: { id: session }, rawInput: JSON.stringify(request) })).text)
+    const created = await invoke('session-a', { action: 'create', title: 'persist me', details: 'disk verification' })
+    assert.equal(created.ok, true)
+    assert.equal((await invoke('session-b', { action: 'list' })).items.length, 0)
+    await runtime.close()
+    const scan = async dir => (await Promise.all((await readdir(dir, { withFileTypes: true })).map(async e => e.isDirectory() ? scan(join(dir, e.name)) : [join(dir, e.name)]))).flat()
+    const files = await scan(root)
+    const payloads = await Promise.all(files.map(path => readFile(path, 'utf8')))
+    assert.ok(payloads.some(content => content.includes('persist me')))
+    runtime = await makeRuntime()
+    assert.deepEqual(await invoke('session-a', { action: 'list' }), created)
+    assert.equal((await invoke('session-b', { action: 'list' })).items.length, 0)
+    await runtime.close()
+  } finally {
+    // The target is a fresh mkdtemp under the OS temporary directory.
+    await rm(root, { recursive: true, force: true })
+  }
+})

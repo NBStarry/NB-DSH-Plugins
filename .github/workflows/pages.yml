@@ -1,0 +1,45 @@
+name: Publish plugin index
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugin-index-pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'NBStarry/NB-DSH-Plugins' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install validator dependencies
+        run: npm ci --prefix market --ignore-scripts
+      - name: Test generator
+        run: node market/test.mjs
+      - name: Generate and validate index from checked-out commit
+        run: |
+          node market/generate.mjs "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$RUNNER_TEMP/plugin-index/index.json"
+          node market/validate.mjs "$RUNNER_TEMP/plugin-index/index.json"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/plugin-index
+      - id: deployment
+        uses: actions/deploy-pages@v4

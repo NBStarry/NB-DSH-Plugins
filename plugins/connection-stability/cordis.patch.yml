@@ -1,0 +1,4 @@
+- id: typert-gateway
+  name: '@deepseek-ai/dsh-api-gateway'
+  config:
+    websocketHeartbeatIntervalMs: 10000

@@ -1,0 +1,3 @@
+- insert:
+    - id: feishu-task-panel
+      name: '@local/feishu-task-panel'

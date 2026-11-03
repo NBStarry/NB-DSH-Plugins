@@ -1,0 +1,25 @@
+{
+  "name": "@nbstarry/dsh-codex-fast",
+  "version": "0.1.0-alpha.3",
+  "description": "Human-controlled Codex priority selection with a new-session default policy.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": ["index.js", "policy.js", "client.js", "cordis.patch.yml", "locale/*.json", "icon.svg", "README.md", "LICENSE"],
+  "peerDependencies": { "@deepseek-ai/schemastery": "*" },
+  "devDependencies": { "@deepseek-ai/dsh-client-ui-primitives": "0.2.2-alpha.2" },
+  "scripts": { "test": "node --test tests/policy.test.js tests/client.test.js" },
+  "publishConfig": { "access": "public" },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "inject": ["@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-ui-model-selection"]
+    }
+  }
+}

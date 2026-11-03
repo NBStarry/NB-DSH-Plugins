@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Session 通信",
+    "description": "在同一个 DSH 进程内的独立会话之间发送消息。"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@local/dsh-team-model",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Inspect and select a Team member's model without changing global defaults.",
+  "engines": { "dsh": "0.2.2-alpha.2" },
+  "exports": { ".": "./index.js", "./locale/*.json": "./locale/*.json", "./icon": "./icon.svg" },
+  "files": ["index.js", "model.js", "spawn-model.js", "cordis.patch.yml", "locale/*.json", "icon.svg", "README.md"],
+  "scripts": { "test": "node --test *.test.mjs" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+}

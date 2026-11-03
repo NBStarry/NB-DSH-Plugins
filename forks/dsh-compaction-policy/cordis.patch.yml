@@ -1,0 +1,5 @@
+# One global policy component; no added presets or compatibility registrations.
+- insert:
+    - id: compaction-policy-global
+      name: dsh-compaction-policy/global
+      config: {}

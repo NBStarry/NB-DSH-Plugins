@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Connection stability",
+    "description": "Sets the existing Gateway WebSocket heartbeat interval to 10 seconds to tolerate brief remote-network delays. Applying or disabling this configuration can briefly reconnect open pages."
+  }
+}

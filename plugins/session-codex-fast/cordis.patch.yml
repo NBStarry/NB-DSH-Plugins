@@ -1,0 +1,5 @@
+- insert:
+    - id: nbstarry-codex-fast
+      name: '@nbstarry/dsh-codex-fast'
+      config:
+        defaultForNewSessions: true

@@ -1,0 +1,6 @@
+- insert:
+    - id: mobile-connection
+      name: '@local/dsh-mobile-connection'
+      disabled: false
+      config:
+        connectionEnabled: false

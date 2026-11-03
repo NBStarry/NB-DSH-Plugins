@@ -1,0 +1,3 @@
+- insert:
+    - id: subagent-newest-first
+      name: '@local/dsh-subagent-newest-first'

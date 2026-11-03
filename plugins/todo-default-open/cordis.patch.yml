@@ -1,0 +1,3 @@
+- insert:
+    - id: todo-default-open
+      name: '@local/dsh-todo-default-open'

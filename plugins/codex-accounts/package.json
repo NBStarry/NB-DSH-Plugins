@@ -1,0 +1,27 @@
+{
+  "name": "@nbstarry/dsh-codex-accounts",
+  "version": "0.1.0-alpha.1",
+  "description": "Human-operated Codex account management over a native multi-account owner.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": ["index.js", "contract.js", "client.js", "client-adapter.js", "client-entry.js", "lib/client.js", "cordis.patch.yml", "locale/*.json", "icon.svg", "README.md", "LICENSE", "THIRD_PARTY_LICENSES/ZOD-LICENSE"],
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=0.0.0-0",
+    "@deepseek-ai/dsh-typert-protocol": ">=0.0.0-0"
+  },
+  "dependencies": { "zod": "^4.4.3" },
+  "publishConfig": { "access": "public" },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "inject": ["@deepseek-ai/dsh-api-remotes", "@deepseek-ai/dsh-client-ui-settings-models"]
+    }
+  }
+}

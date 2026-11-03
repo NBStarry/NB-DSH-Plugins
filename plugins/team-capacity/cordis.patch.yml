@@ -1,0 +1,3 @@
+- insert:
+    - id: local-team-capacity
+      name: '@local/dsh-team-capacity'

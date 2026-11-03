@@ -1,0 +1,24 @@
+# Security and privacy
+
+A DSH host plugin runs with the privileges of its host process. Model-facing tool approvals and workspace sandboxes do not sandbox plugin code. Review the source and pin a release before installing.
+
+This package:
+
+- applies a range-admitted, method-fingerprint-verified, reversible pressure-method adapter to existing official Basic engines in its runtime;
+- registers a global status/reset command, but no presets or compatibility compositions;
+- does not filter the preset registry, read preset YAML, or translate/rewrite session identities;
+- uses the existing LLM and session services for ordinary official compaction;
+- keeps failure metadata and content hashes in session-keyed memory;
+- does not read credentials itself, wrap HTTP, add telemetry, start subprocesses, download a model, or create an auxiliary transcript store;
+- does not alter the default preset or any model's actual maximum output / reasoning settings.
+
+Existing DSH summarization can send selected conversation history to the route configured by the user. “No new external service” does not mean “no network” when the chosen summarizer is remote. The normal host logging/persistence policies still apply.
+
+Known constraints:
+
+- The host's token meter is approximate; capped reservation cannot guarantee admission by every provider.
+- The plugin's cooldown is proactive only. Manual and provider-confirmed overflow recovery can perform compaction during a proactive cooldown or dry run.
+- The bundle load-admits DSH `^0.2.1-rc.1` (Cordis 4.0.x), but the policy activates only on the five verified Basic method fingerprints. An unrecognized host implementation leaves the default global plugin inert on stock compaction rather than adapting blindly; the opt-in root backend still refuses loudly. Re-read and re-test the upstream seam before refreshing a fingerprint or widening a range.
+- The current test evidence covers core contracts with a scripted model, not live-model quality or a full GUI installation.
+
+Do not include credentials, complete conversation logs or private source code in public bug reports. For a vulnerability, use GitHub private vulnerability reporting if available, otherwise ask the maintainer for a private channel before sharing exploit details. Do not open a public issue containing secrets.

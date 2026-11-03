@@ -1,0 +1,74 @@
+{
+  "name": "dsh-plugin-notify",
+  "version": "1.4.0-local.1",
+  "description": "Message reminders for DeepSeek Harness Web and Desktop: in-page banner, native desktop notifications, host system notifications, and Feishu/DingTalk/WeCom/generic webhooks when a task turn ends, execution waits for confirmation, or an interactive question arrives.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "cordis.patch.yml",
+    "README-en.md",
+    "LICENSE",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [],
+      "immediately": true
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "license": "MIT",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "deepseek",
+    "deepseek-ai",
+    "cordis",
+    "plugin",
+    "notify",
+    "notification",
+    "notifications",
+    "desktop-notification",
+    "desktop-notifications",
+    "native-notifications",
+    "webhook",
+    "feishu",
+    "dingtalk",
+    "wecom",
+    "sidebar",
+    "web-ui",
+    "badge",
+    "open-source",
+    "javascript"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/c-ling/dsh-plugin-notify.git"
+  },
+  "bugs": {
+    "url": "https://github.com/c-ling/dsh-plugin-notify/issues"
+  },
+  "homepage": "https://github.com/c-ling/dsh-plugin-notify#readme",
+  "scripts": {
+    "test": "node --test"
+  }
+}
