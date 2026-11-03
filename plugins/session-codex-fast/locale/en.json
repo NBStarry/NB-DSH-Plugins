@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Codex Fast",
-    "description": "Choose Codex priority processing per session; optionally enable it for new sessions."
+    "description": "Choose Codex priority per session. Enabled by default for eligible new sessions; priority may incur additional charges."
   },
   "config": {
     "defaultForNewSessions": "Enable Fast for new Codex sessions"

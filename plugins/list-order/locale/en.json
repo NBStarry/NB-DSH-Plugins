@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Newest-created lists",
-    "description": "Show Team tasks and ordinary subagents newest-created first, independently."
+    "description": "Show Team tasks and subagents newest-created first. Do not run the same adapters with team-only or subagent-newest-first."
   }
 }

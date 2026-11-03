@@ -1,1 +1,15 @@
-[]
+[
+  { "path": "plugins/backlog-plugin", "name": "@local/dsh-session-backlog", "version": "1.0.0" },
+  { "path": "plugins/connection-stability", "name": "@local/dsh-connection-stability", "version": "0.1.0" },
+  { "path": "plugins/dsh-session-messenger", "name": "@local/dsh-session-messenger", "version": "0.1.0" },
+  { "path": "plugins/feishu-task-panel", "name": "@local/feishu-task-panel", "version": "1.5.0" },
+  { "path": "plugins/list-order", "name": "@local/dsh-list-order", "version": "1.0.0" },
+  { "path": "plugins/mobile-connection", "name": "@local/dsh-mobile-connection", "version": "0.2.0" },
+  { "path": "plugins/session-codex-fast", "name": "@nbstarry/dsh-codex-fast", "version": "0.1.0-alpha.3" },
+  { "path": "plugins/subagent-newest-first", "name": "@local/dsh-subagent-newest-first", "version": "1.0.0" },
+  { "path": "plugins/team-capacity", "name": "@local/dsh-team-capacity", "version": "1.0.0" },
+  { "path": "plugins/team-model", "name": "@local/dsh-team-model", "version": "1.0.0" },
+  { "path": "plugins/team-policy", "name": "@local/dsh-team-only", "version": "2.0.0" },
+  { "path": "plugins/team-roles", "name": "@local/dsh-team-roles", "version": "1.0.0" },
+  { "path": "plugins/todo-default-open", "name": "@local/dsh-todo-default-open", "version": "1.0.0" }
+]

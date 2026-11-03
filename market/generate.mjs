@@ -24,11 +24,18 @@ const plugins = list.map(item => {
   if (names.has(name)) fail(`duplicate package name: ${name}`)
   names.add(name)
   if (typeof version !== 'string' || !/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?$/.test(version)) fail(`invalid exact SemVer: ${version}`)
-  const blob = relative => {
+  const blob = (relative, { optional = false, maxBytes = 1024 * 1024 } = {}) => {
     const file = `${path}/${relative}`
     const entry = git('ls-tree', commit, '--', file)
-    if (!/^100(?:644|755) blob [0-9a-f]{40}\t/.test(entry) || entry.slice(entry.indexOf('\t') + 1) !== file) fail(`not a regular committed file: ${file}`)
-    return git('show', `${commit}:${file}`)
+    if (!entry && optional) { console.warn(`missing optional file: ${file}`); return }
+    const match = /^100(?:644|755) blob ([0-9a-f]{40})\t(.+)$/.exec(entry)
+    if (!match || match[2] !== file) fail(`not a regular committed file: ${file}`)
+    const size = Number(git('cat-file', '-s', match[1]))
+    if (size > maxBytes) {
+      if (optional) { console.warn(`optional file exceeds ${maxBytes} bytes: ${file}`); return }
+      fail(`file exceeds ${maxBytes} bytes: ${file}`)
+    }
+    return execFileSync('git', ['-C', root, 'cat-file', 'blob', match[1]], { maxBuffer: maxBytes + 1 })
   }
   const manifest = JSON.parse(blob('package.json'))
   if (manifest.name !== name || manifest.version !== version) fail(`allowlist does not match manifest: ${path}`)
@@ -38,9 +45,26 @@ const plugins = list.map(item => {
   for (const p of patches) blob(p.replace(/^\.\//, ''))
   const engine = manifest.engines?.dsh
   if (engine !== undefined && (typeof engine !== 'string' || !engine.trim())) fail(`invalid engines.dsh: ${path}`)
+  const locale = Object.fromEntries(['en', 'zh'].map(language => {
+    const raw = blob(`locale/${language}.json`, { optional: true })
+    if (!raw) return [language, {}]
+    try { const meta = JSON.parse(raw).meta; return [language, meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {}] } catch { console.warn(`invalid locale: ${path}/locale/${language}.json`); return [language, {}] }
+  }))
+  const text = (field, fallback) => {
+    const valid = value => typeof value === 'string' && value.trim() !== ''
+    const en = valid(locale.en[field]) ? locale.en[field] : fallback
+    if (!valid(en)) return
+    return { en, ...(valid(locale.zh[field]) ? { zh: locale.zh[field] } : {}) }
+  }
+  const title = text('title', name)
+  const description = text('description', manifest.description)
+  const iconBytes = blob('icon.svg', { optional: true, maxBytes: 32 * 1024 })
   return {
     name,
-    ...(typeof manifest.description === 'string' && manifest.description.trim() ? { description: manifest.description } : {}),
+    title,
+    ...(description === undefined ? {} : { description }),
+    ...(iconBytes ? { icon: `data:image/svg+xml;base64,${iconBytes.toString('base64')}` } : {}),
+    repository: { url: `https://github.com/${repository}`, directory: path },
     versions: [{ version, publishTimestamp: timestamp, source: { type: 'git', url: `https://github.com/${repository}`, commit, path }, ...(engine === undefined ? {} : { engines: { dsh: engine } }) }],
   }
 })

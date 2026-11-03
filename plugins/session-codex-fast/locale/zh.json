@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Codex Fast",
-    "description": "按会话选择 Codex 优先处理，可为新会话默认开启。"
+    "description": "按会话选择 Codex 优先处理；符合条件的新会话默认开启，优先处理可能额外计费。"
   },
   "config": {
     "defaultForNewSessions": "新 Codex 会话默认开启 Fast"

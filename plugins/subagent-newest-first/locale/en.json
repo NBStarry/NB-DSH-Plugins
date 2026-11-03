@@ -1,1 +1,1 @@
-{"meta":{"title":"Newest subagents first","description":"Shows newly created subagents at the top of the existing expandable catalog, without changing execution or history."}}
+{"meta":{"title":"Newest subagents first","description":"Show newest subagents first without changing execution or history. Do not use with list-order's subagent sorting."}}
