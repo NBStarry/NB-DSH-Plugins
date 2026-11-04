@@ -51,7 +51,7 @@ ELECTRON_RUN_AS_NODE=1 \
 
 ## Current acceptance record
 
-The unpublished adaptation includes synthetic in-memory host tests for stock/overflow delegation, helper drift, and native model-switch success/failure. Model-switch pressure remains native and bypasses the policy guard. Synthetic tests do not establish real GUI, session, or inference acceptance; this adaptation is not a released tag.
+Unpublished workspace adaptation: DSH 0.2.2-alpha.2, Cordis 4.0.6-alpha.1, macOS Electron Node mode against the installed ASAR. Synthetic in-memory host tests exercise stock/overflow delegation, helper drift, and native model-switch success/failure. Model-switch pressure remains native and bypasses the policy guard. No actual GUI process, real sessions or inference were tested; this is not a released tag.
 
 2026-10-17, DSH 0.2.1-rc.2 (Cordis 4.0.5, schemastery 3.18.5), Electron Node mode against the installed ASAR host:
 

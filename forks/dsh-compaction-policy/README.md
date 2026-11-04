@@ -2,9 +2,9 @@
 
 [中文](<README.zh-CN.md>) · [Development & host tests](<CONTRIBUTING.md>) · [Security](<SECURITY.md>)
 
-**An experimental global compaction policy for DeepSeek Harness.** Keep the official Basic summarizer, checkpoint records, tool pairing, token meter, UI event protocol, native `/compact`, and overflow recovery. Change proactive budgeting, range selection, and no-progress retries—without selecting a special preset.
+**An experimental global compaction policy for DeepSeek Harness.** Keep the official Basic summarizer, checkpoint records, tool pairing, token meter, UI event protocol, and native `/compact`. When an automatic summary request overflows, retry a shorter balanced surface span—without selecting a special preset.
 
-**Experimental unpublished workspace modification based on v0.2.2.** It admits DSH **`^0.2.1-rc.1`** and stable Cordis **`~4.0.4`**, plus exactly **`4.0.6-alpha.1`**; activation additionally requires one complete verified Basic method fingerprint tuple. An unrecognized host stays loaded but inert on stock Basic. Synthetic tests using actual host components and scripted model responses are not proof of live GUI or real-model behavior. No lossless-summary or larger-context-window claim is made. The v0.2.2 tag below refers to the original release and does not include this unpublished modification.
+**Experimental unpublished fork `0.2.2-local.1` based on v0.2.2.** It admits DSH **`^0.2.1-rc.1`** and stable Cordis **`~4.0.4`**, plus exactly **`4.0.6-alpha.1`**; activation additionally requires one complete verified Basic method fingerprint tuple. An unrecognized host stays loaded but inert on stock Basic. Synthetic tests using actual host components and scripted model responses are not proof of live GUI or real-model behavior. No lossless-summary or larger-context-window claim is made. The v0.2.2 tag below refers to the original release and does not include this unpublished modification.
 
 ## What installation changes
 
@@ -22,7 +22,7 @@ The default bundle installs exactly **one root plugin**:
 
 Only the fingerprint-verified official Basic implementation is targeted. Custom backends, subclasses, and instances with method overrides are skipped. Presets with no compaction, including minimal compositions without it, are unaffected. “Global” does not mean every DSH process or profile on the machine.
 
-**Model-switch exception:** on DSH 0.2.2-alpha.2, `agent/request` model-switch compaction directly uses native `compactPressure`, not the plugin's 90% threshold, dry-run, retention, or retry guard. The native switch safety check and failure rejection remain in effect. One-transaction-per-step and failure-cooldown claims below describe plugin proactive pressure, not this model-switch path.
+**Model switching:** on DSH 0.2.2-alpha.2, native `compactPressure` still owns the destination threshold, successful compaction limit and failure rejection, not the plugin's 90% threshold, dry-run, retention, or cooldown. If a summary returns `CONTEXT_WINDOW_EXCEEDED` and its failed transaction is closed with the history unchanged, the plugin retries a shorter balanced actual range through a new native transaction. Each retry resends selected conversation history to the existing summary model and may incur additional cost; summaries are not lossless. Manual `/compact` and direct `compactRegion` calls remain unchanged. Failed attempts leave paired log markers; earlier successful checkpoints or pruning remain if a later switch fails. An indivisible oversized unit or excessive fixed request overhead can still prevent recovery.
 
 ## Default policy: 90%, with no double deduction
 
@@ -48,7 +48,7 @@ Defaults are **`thresholdRatio: 0.9`, `outputReserveCap: 0`, `headroomTokens: 0`
 - Retain recent history with a **soft target of 16%**. Whole messages and tool-call/result units stay atomic; the newest unit remains verbatim even when larger than the target.
 - Allow an older large message into the summary rather than repeatedly summarizing only a tiny preceding checkpoint. System nodes are protected; a later system node is a selection barrier.
 - Require at least **2,048 non-checkpoint tokens** in the selected range before proactive summarization.
-- Make at most **one summary transaction per pressure step**; do not immediately summarize the fresh checkpoint again.
+- Commit at most **one successful summary per proactive pressure step**; an overflow may open additional failed transactions on successively shorter balanced spans. Do not immediately summarize a fresh checkpoint again.
 - Back off failures for **60s, 120s, 240s… up to 10 minutes**. Expiry allows one probe on the next pressure check, not a background model call. Material candidate changes may permit earlier retry; unrelated tail appends do not.
 - Preserve native manual and confirmed-overflow paths, retry limits, transaction completion, and durable-progress checks. They bypass the proactive guard.
 
@@ -58,7 +58,7 @@ The published GitHub tag `github:huohua-dev/dsh-compaction-policy#v0.2.2` is the
 
 ### Install the workspace modification
 
-In the current Harness profile, use the plugin manager's `install_bundle` action with the **absolute path to the reviewed local package directory** on your machine as its target. Local directory installation links that checkout, so later edits affect the installed files; it is not a pinned release. Check the installation result, including `application` and any `warnings`, rather than assuming it is live.
+With explicit authorization, use the target Harness profile's plugin manager `install_bundle` action with the **absolute path to the reviewed local package directory** as its target. Local directory installation links that checkout, so later edits affect the installed files; it is not a pinned release. Check `application` and `warnings` rather than assuming it is live. An older adapter still draining or a retained foreign wrapper can prevent activation; do not assume hot upgrade works, and verify activation after a full restart.
 
 For a Desktop-managed profile, **fully quit and restart Desktop** after updating the installed package. A page refresh or profile reload is not a substitute: an old-process import failure was observed and cleared by a full restart. Desktop-managed plugin changes via CLI are rejected; do not use a `--profile desktop` CLI workaround. The local-path option in the Desktop UI has not been verified here; if it is unavailable, use the plugin manager's `install_bundle` action instead of assuming the UI accepts it.
 

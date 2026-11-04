@@ -1,6 +1,8 @@
 import { resolveConfig, resolvePolicy, resolveBudget, routedTarget } from './policy.js';
 import { selectRange, describeCandidate, digest, hasActiveCompaction } from './selection.js';
 import { RetryGuard } from './guard.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { compactWithOverflowFallback } from './overflow.js';
 
 const isCancellation = (error, signal) => signal?.aborted || error?.name === 'AbortError' || error?.code === 'ABORTED';
 const shrinkFailure = (error) => error instanceof Error
@@ -16,6 +18,7 @@ export function createPolicyEngine({ BasicCompactionEngine, toolPairingBalancedB
   const summaryFailures = new WeakSet();
   const operationSignals = new WeakMap();
   const pairing = { before: toolPairingBalancedBefore, after: toolPairingBalancedAfter };
+  const automatic = new AsyncLocalStorage();
 
   return class PolicyCompactionEngine extends BasicCompactionEngine {
     constructor(ctx, source = {}) {
@@ -66,6 +69,10 @@ export function createPolicyEngine({ BasicCompactionEngine, toolPairingBalancedB
     }
 
     async compactIfNeeded(agent, trigger, signal) {
+      return automatic.run({ agent, session: agent.session, signal }, () => this._compactIfNeeded(agent, trigger, signal));
+    }
+
+    async _compactIfNeeded(agent, trigger, signal) {
       signal?.throwIfAborted();
       if (trigger !== 'pressure' && trigger !== 'context-overflow') throw new TypeError(`unknown compaction trigger: ${trigger}`);
       // Never suppress real context-overflow recovery with a proactive guard,
@@ -160,12 +167,23 @@ export function createPolicyEngine({ BasicCompactionEngine, toolPairingBalancedB
       }
     }
 
+    async compactPressure(agent, header, signal, requireBelowThreshold) {
+      return automatic.run({ agent, session: agent.session, signal }, () =>
+        super.compactPressure(agent, header, signal, requireBelowThreshold));
+    }
+
     async compactRegion(start, end, agent, signal) {
       const session = agent.session;
       if (operationSignals.has(session)) throw new Error('compaction-policy: a region transaction is already in progress');
       operationSignals.set(session, signal);
       try {
-        return await super.compactRegion(start, end, agent, signal);
+        const scope = automatic.getStore();
+        const compact = (from, to) => super.compactRegion(from, to, agent, signal);
+        if (!scope || scope.agent !== agent || scope.session !== session || scope.signal !== signal) return await compact(start, end);
+        const attempt = {};
+        return await automatic.run({ ...scope, attempt }, () => compactWithOverflowFallback({
+          session, start, end, signal, meter: this.ctx.tokenMeter, pairing, compact, attempt,
+        }));
       } finally {
         operationSignals.delete(session);
       }
@@ -197,7 +215,11 @@ export function createPolicyEngine({ BasicCompactionEngine, toolPairingBalancedB
         signal?.throwIfAborted();
         return result;
       } catch (error) {
-        if (!isCancellation(error, signal) && error !== null && typeof error === 'object') summaryFailures.add(error);
+        if (!isCancellation(error, signal) && error !== null && typeof error === 'object') {
+          summaryFailures.add(error);
+          const scope = automatic.getStore();
+          if (scope?.agent === agent && scope.session === agent.session && scope.signal === signal && scope.attempt) scope.attempt.error = error;
+        }
         throw error;
       }
     }

@@ -1,6 +1,6 @@
 {
   "name": "dsh-compaction-policy",
-  "version": "0.2.2",
+  "version": "0.2.2-local.1",
   "description": "Global 90% native compaction for DeepSeek Harness: summary-first pressure and reversible integration without extra presets.",
   "type": "module",
   "license": "MIT",

@@ -175,10 +175,11 @@ test('changed alpha compactPressure rejects activation and is detected after act
   try { assert.throws(() => enable(f), /compactPressure differs/); }
   finally { Basic.prototype.compactPressure = originalPressure; }
   const installed = enable(f);
+  const activePressure = Basic.prototype.compactPressure;
   try {
     Basic.prototype.compactPressure = foreign;
     assert.deepEqual(installed.status(f.engine, f.session), { reason: 'host-method-changed-after-activation' });
-  } finally { Basic.prototype.compactPressure = originalPressure; await installed.dispose(); }
+  } finally { Basic.prototype.compactPressure = activePressure; await installed.dispose(); }
   assert.throws(() => install({ ...inputs, ctx: f.ctx, policy: config,
     expectedHashes: [Object.fromEntries(Object.entries(VERIFIED_BASIC_METHOD_HASH_SETS[1]).filter(([name]) => name !== 'compactPressure'))] }), /differs/);
 });
@@ -271,6 +272,25 @@ test('unload drains admitted summary without abort and serializes same-session s
   assert.equal(await stockAfter, null);
   assert.equal(await disposing, 'restored');
   assert.equal(f.signal.aborted, false);
+  assert.equal(f.state.requests.length, 1);
+  assert.equal(events(f.session, 'compaction/summary').length, 1);
+});
+
+test('unload drains an admitted waiter without starting stock recovery after disposal', async () => {
+  const f = fixture(); const gate = deferred(), started = deferred();
+  f.state.streamWait = gate.promise; f.state.started = started.resolve;
+  const installed = enable(f);
+  const pending = f.engine.compactIfNeeded(f.agent, 'pressure', f.signal);
+  await started.promise;
+  const waiting = f.engine.compactIfNeeded(f.agent, 'context-overflow', f.signal);
+  const rejected = assert.rejects(waiting, /adapter disposed while the operation was waiting/);
+  const disposing = installed.dispose();
+  let disposed = false; disposing.then(() => { disposed = true; });
+  await Promise.resolve(); assert.equal(disposed, false);
+  gate.resolve();
+  assert(await pending);
+  await rejected;
+  assert.equal(await disposing, 'restored');
   assert.equal(f.state.requests.length, 1);
   assert.equal(events(f.session, 'compaction/summary').length, 1);
 });
