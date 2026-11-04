@@ -1,0 +1,8 @@
+# Development worktrees
+
+- Before editing, identify the Git repository and run `git status --short --branch` and `git worktree list`. Do not reset, clean, switch, stage, or commit another session's changes without coordination.
+- Start each independent task or session in a separate Git worktree and branch, based on the intended integration branch. For example: `git worktree add -b <branch> <worktree-path> <base>`. Open the session with that worktree as its working directory. Parallel agents working on the same task may share its worktree only with coordinated, disjoint write scopes.
+- Keep the primary checkout as an integration checkout, not a shared development directory. Do not move an existing session or dirty checkout automatically. Worktree branches share Git history and repository configuration; avoid concurrent Git operations on the same worktree and coordinate changes to shared refs and configuration.
+- Inspect and test the intended changes, including new files and package contents, before staging specific paths. Never commit credentials, local profile data, caches, installed dependencies, or unreviewed debug evidence. Preserve existing staged and unstaged work.
+- Commit the task on its worktree branch; integrate it only after review and relevant checks. Do not push, publish, install, remove a worktree, or delete a branch without the relevant authorization. Resolve active merges deliberately rather than hiding or replacing them.
+- DSH plugin development and validation continue to follow the user's default remote experimental-environment and plugin-manager rules. A Git worktree is not a runtime sandbox.
