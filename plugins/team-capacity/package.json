@@ -1,12 +1,12 @@
 {
   "name": "@local/dsh-team-capacity",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
-  "description": "User-controlled Team member limit settings with an idle-member safety check.",
+  "description": "User-controlled Team member limit settings; changing the limit reloads the Team service and requires a maintenance window.",
   "engines": { "dsh": "0.2.2-alpha.2" },
   "exports": { ".": "./index.js", "./client": "./client.js", "./locale/*.json": "./locale/*.json", "./icon": "./icon.svg" },
-  "files": ["index.js", "client.js", "cordis.patch.yml", "locale/*.json", "icon.svg"],
+  "files": ["index.js", "client.js", "cordis.patch.yml", "locale/*.json", "icon.svg", "README.md"],
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" },
     "client": { "platform": "web", "immediately": true, "inject": ["@deepseek-ai/dsh-api-remotes", "@deepseek-ai/dsh-client-ui-conversation"] }

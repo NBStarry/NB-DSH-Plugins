@@ -6,18 +6,18 @@ window.__ModuleLoader__.load({
     const ns = 'local-team-capacity';
     const zh = {
       title: '团队人数上限', close: '关闭', refresh: '刷新', save: '保存上限', saving: '正在保存…', reset: '恢复当前值',
-      loading: '正在读取上限…', error: '请求失败', saved: '人数上限已保存，无需新建会话。',
+      loading: '正在读取上限…', error: '请求失败', saved: '人数上限已保存。',
       hint: '限制每个团队累计创建的成员数，不含负责人，创建失败的成员也占名额。降低上限不会删除已有成员或历史；已达到上限的团队不能继续创建成员。',
-      scope: '影响当前配置下的全部团队。保存会重载团队服务，仅在全部成员空闲时允许。',
-      active: '仍有成员运行或准备中，保存会被拒绝。', dirty: '有未保存的修改，请先保存或恢复当前值。',
+      scope: '影响当前 profile 的全部团队；保存会重载团队服务，可能中断会话。保存前必须进入维护窗口，先让同一 profile 的相关会话停止任务，并在操作期间避免启动或唤醒任务。成员活动检查不是原子锁，无法保证并发期间不会启动任务。',
+      active: '上次检查发现成员运行或准备中；请先停止相关会话的任务，在维护窗口重新检查。', dirty: '有未保存的修改，请先保存或恢复当前值。',
       unavailable: '团队容量命令不可用。',
     };
     const en = {
       title: 'Team member limit', close: 'Close', refresh: 'Refresh', save: 'Save limit', saving: 'Saving…', reset: 'Reset to current value',
-      loading: 'Reading limit…', error: 'Request failed', saved: 'Member limit saved; keep using this conversation.',
+      loading: 'Reading limit…', error: 'Request failed', saved: 'Member limit saved.',
       hint: 'Limits cumulative teammate creation per Team, excluding the Lead and including failed creations. Lowering the limit deletes no members or history; Teams at the limit cannot create more members.',
-      scope: 'Applies to every Team in this profile. Saving reloads the Team service and is allowed only when all teammates are idle.',
-      active: 'Members are running or provisioning; saving will be rejected.', dirty: 'Unsaved changes: save or reset before closing or refreshing.',
+      scope: 'Applies to every Team in this profile. Saving reloads the Team service and may interrupt conversations. Before saving, enter a maintenance window and stop tasks in related sessions in the same profile; avoid starting or waking tasks during the change. The member activity check is not an atomic lock and cannot prevent concurrent task starts.',
+      active: 'The last check found running or provisioning members. Stop tasks in related sessions and check again during a maintenance window.', dirty: 'Unsaved changes: save or reset before closing or refreshing.',
       unavailable: 'Team capacity command is unavailable.',
     };
     const css = `

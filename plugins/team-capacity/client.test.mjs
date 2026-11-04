@@ -38,6 +38,10 @@ test('standalone entry registers without roles or policy and cleans up on unload
   assert.equal(f.slot.id, 'local-team-capacity');
   assert.equal(f.locale.translations.zh.title, '团队人数上限');
   assert.equal(f.locale.translations.en.title, 'Team member limit');
+  assert.match(f.locale.translations.zh.scope, /维护窗口.*停止任务.*不是原子锁.*并发期间不会启动任务/);
+  assert.match(f.locale.translations.en.scope, /maintenance window.*stop tasks.*not an atomic lock.*concurrent task starts/);
+  assert.match(f.locale.translations.zh.scope, /可能中断会话/);
+  assert.match(f.locale.translations.en.scope, /may interrupt conversations/);
   const view = f.component({ sessionId: 'lead-session', execute() {}, t: key => key, useAccess: () => true });
   const trigger = view.children[1];
   assert.equal(trigger.type, 'button'); assert.equal(trigger.props.disabled, false);
