@@ -54,7 +54,7 @@ export function createMessenger(ctx, { createUserMessage }) {
   function targetIsEligible(agent, id) {
     return agent && agent.id === id && agent.session?.id === id &&
       ordinary(agent.session.header, id) && ctx.agents.get(id) === agent &&
-      typeof agent.followup === 'function';
+      typeof agent.steer === 'function';
   }
 
   function chargePair(a, b) {
@@ -153,7 +153,7 @@ export function createMessenger(ctx, { createUserMessage }) {
     if (archived(id)) throw new Error('Target session is archived');
     if (!targetIsEligible(target, id)) throw new Error('Target is not the exact live ordinary session agent');
 
-    // No await between the last checks and followup: this is the admission
+    // No await between the last checks and steer: this is the admission
     // boundary. A synchronous failure may have already committed, so keep its
     // rate charge rather than risk duplicate unbounded retries.
     const message = createUserMessage({
@@ -164,7 +164,7 @@ export function createMessenger(ctx, { createUserMessage }) {
     if (archived(id)) throw new Error('Target session is archived');
     if (!targetIsEligible(target, id)) throw new Error('Target is not the exact live ordinary session agent');
     chargePair(caller.id, id);
-    target.followup(message);
+    target.steer(message);
     return { accepted: true };
   }
 

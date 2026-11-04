@@ -11,7 +11,7 @@ const codecPath = process.env.DSH_SESSION_V4_CODEC;
 test('actual V4 codec round-trips the message emitted by the plugin', { skip: !codecPath }, async () => {
   const { releasedV4SessionFormatCodec: codec } = await import(pathToFileURL(codecPath).href);
   const caller = { id: 'caller', session: { id: 'caller', header: { id: 'caller' } } };
-  const target = { id: 'target', session: { id: 'target', header: { id: 'target' } }, followup(value) { this.message = value; } };
+  const target = { id: 'target', session: { id: 'target', header: { id: 'target' } }, steer(value) { this.message = value; } };
   const agents = new Map([[caller.id, caller], [target.id, target]]);
   const tools = new Map();
   const ctx = {

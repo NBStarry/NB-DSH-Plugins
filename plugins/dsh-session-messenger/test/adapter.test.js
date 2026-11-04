@@ -4,7 +4,7 @@ import { apply } from '../index.js';
 
 test('registers and disposes tools and sends immutable plugin-sourced messages', async () => {
   const caller = { id: 'caller', session: { id: 'caller', header: { id: 'caller' } } };
-  const target = { id: 'target', session: { id: 'target', header: { id: 'target' } }, messages: [], followup(message) { this.messages.push(message); } };
+  const target = { id: 'target', session: { id: 'target', header: { id: 'target' } }, messages: [], steer(message) { this.messages.push(message); } };
   const agents = new Map([[caller.id, caller], [target.id, target]]);
   const tools = new Map();
   const disposers = [];
@@ -18,6 +18,10 @@ test('registers and disposes tools and sends immutable plugin-sourced messages',
   };
   apply(ctx);
   assert.deepEqual([...tools.keys()], ['list_peer_sessions', 'send_to_peer_session']);
+  const description = tools.get('send_to_peer_session').description;
+  assert.match(description, /rejected step may defer/);
+  assert.match(description, /cancellation or disposal may discard/);
+  assert.match(description, /does not guarantee delivery/);
   const exec = { agent: caller, signal: new AbortController().signal };
   assert.equal((await tools.get('list_peer_sessions').execute({}, exec)).sessions.length, 2);
   assert.deepEqual(await tools.get('send_to_peer_session').execute({ sessionId: 'target', text: 'hello' }, exec), { accepted: true });
