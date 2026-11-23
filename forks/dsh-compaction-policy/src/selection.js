@@ -18,31 +18,43 @@ export function selectRange(session, measurement, { retainTokens, minFreshTokens
   const events = surface.map((seq) => session.eventAt(seq));
   let first = 0;
   while (events[first]?.type === 'system/message') first++;
-  if (first >= nodes.length - 1) return { reason: 'no-older-history' };
+  let latest = nodes.length - 1;
+  while (latest >= 0 && events[latest].type === 'system/message') latest--;
+  if (first >= latest) return { reason: 'no-older-history' };
   if (!pairing.before(session, surface[first])) return { reason: 'unbalanced-prefix' };
-  // An unexpected later system node is a barrier, not ordinary history to erase.
-  let endLimit = nodes.length - 2;
-  const systemBarrier = events.findIndex((event, index) => index > first && event.type === 'system/message');
-  if (systemBarrier >= 0) endLimit = Math.min(endLimit, systemBarrier - 1);
+  const historyStart = first;
   const suffix = new Array(nodes.length + 1).fill(0);
   for (let i = nodes.length - 1; i >= 0; i--) suffix[i] = suffix[i + 1] + nodes[i].tokens;
   let freshTokens = 0;
   let regionTokens = 0;
   let lastUseful;
   let balanced = false;
-  for (let i = first; i <= endLimit; i++) {
+  for (let i = first; i < latest; i++) {
+    // Preserve each system node, but do not let checkpoint-only segments block later history.
+    if (events[i].type === 'system/message') {
+      if (lastUseful) return { range: lastUseful };
+      first = i + 1;
+      freshTokens = regionTokens = 0;
+      continue;
+    }
+    // A tool unit may straddle a system node; leave its remaining results untouched.
+    if (i === first && !pairing.before(session, surface[i])) {
+      first++;
+      continue;
+    }
     regionTokens += nodes[i].tokens;
     const checkpoint = events[i].type === 'user/message' && events[i].data.source?.kind === 'compact-checkpoint';
     if (!checkpoint) freshTokens += nodes[i].tokens;
     if (!pairing.after(session, surface[i])) continue;
     balanced = true;
     if (freshTokens < minFreshTokens) continue;
+    const retainedTokens = suffix[historyStart] - suffix[first] + suffix[i + 1];
     const candidate = {
       start: surface[first], end: surface[i], startIndex: first, endIndex: i,
-      freshTokens, regionTokens, retainedTokens: suffix[i + 1],
+      freshTokens, regionTokens, retainedTokens,
     };
     // Earliest useful cut that meets the target: keeps as much raw history as possible.
-    if (suffix[i + 1] <= retainTokens) return { range: candidate };
+    if (retainedTokens <= retainTokens) return { range: candidate };
     lastUseful = candidate;
   }
   // The newest indivisible unit can exceed the entire retention target.

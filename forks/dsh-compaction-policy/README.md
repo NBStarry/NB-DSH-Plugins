@@ -46,7 +46,7 @@ Defaults are **`thresholdRatio: 0.9`, `outputReserveCap: 0`, `headroomTokens: 0`
 ### Selection and failure guard
 
 - Retain recent history with a **soft target of 16%**. Whole messages and tool-call/result units stay atomic; the newest unit remains verbatim even when larger than the target.
-- Allow an older large message into the summary rather than repeatedly summarizing only a tiny preceding checkpoint. System nodes are protected; a later system node is a selection barrier.
+- Allow an older large message into the summary rather than repeatedly summarizing only a tiny preceding checkpoint. System nodes divide history into protected segments: select the earliest segment with enough fresh, tool-balanced history, skipping checkpoint-only or tiny segments. Never summarize across a system node. Retention counts the unselected prefix and tail, excluding leading system nodes; if the target is unreachable, select the largest eligible range in that segment while preserving the latest atomic unit, even before trailing system updates.
 - Require at least **2,048 non-checkpoint tokens** in the selected range before proactive summarization.
 - Make at most **one summary transaction per pressure step**; do not immediately summarize the fresh checkpoint again.
 - Back off failures for **60s, 120s, 240s… up to 10 minutes**. Expiry allows one probe on the next pressure check, not a background model call. Material candidate changes may permit earlier retry; unrelated tail appends do not.
@@ -157,6 +157,8 @@ The root **`dsh-compaction-policy` backend** and **`dsh-compaction-policy/global
 Uninstalling does not delete or rewrite session logs, migrate test-preset identities, or restore all pre-compaction history into active context.
 
 ## Limits and verification
+
+Segment summaries use native Basic unchanged: on the verified host the summary request contains the leading system prompt, current header/tools and selected range, not preserved earlier checkpoints or intervening system updates. Those nodes remain in the main conversation, but summary quality may suffer from missing prior context. Each pressure step handles only one segment, so several steps may be needed to reduce pressure; this does not guarantee recovery from an already oversized request.
 
 Summary quality and provider capacity remain model/upstream concerns. Meter values are host estimates; the plugin does not falsify token counts, lower main-request reasoning, add a compression service, wrap global `fetch`, patch ASAR, or ship another DSH kernel. Host plugins run with host privileges; model tool approvals do **not** sandbox them.
 

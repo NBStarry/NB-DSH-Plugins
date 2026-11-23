@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — system-segment selection
+
+- Fix proactive compaction stalling behind a checkpoint-only prefix and an in-history system message. Scan later segments without replacing system nodes or splitting tool units.
+- Count preserved prefix and tail toward retention, keep the latest atomic unit even with trailing system updates, and retain one transaction per pressure step.
+- Add segmented-history unit regressions and a real Basic/Session/TokenMeter integration test with a scripted model. Native summary-input limitations are documented; no profile deployment or live-model validation is implied.
+
 ## 0.2.2 — 2026-10-17
 
 Fix the recurring "incompatible after every DSH upgrade" failure for good. DSH 0.2.1-rc.2 changed no compaction code—its published `dsh-compaction*` tarballs differ from rc.1 only in `package.json` version strings, and all five Basic method fingerprints still match—yet the host rejected the plugin before importing it. Three stacked exact-version gates were the whole problem; all three are gone.

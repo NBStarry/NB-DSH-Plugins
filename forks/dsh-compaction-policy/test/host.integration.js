@@ -85,6 +85,35 @@ test('real Session + TokenMeter + Basic summary transaction preserve budgets and
   assert(toolPairingBalancedAfter(f.session, replacement.seq));
 });
 
+test('real Basic compacts a later segment after a checkpoint without replacing system updates', async () => {
+  const f = context();
+  const first = await f.engine.compactIfNeeded(f.agent, 'pressure', f.signal);
+  assert(first);
+  const s = f.session;
+  const prefix = [...s.surface.nodes];
+  const update = s.append('system/message', { message: { role: 'system', content: [{ type: 'text', text: 'Updated synthetic system.' }] } }, { surfaceOp: 'append' });
+  const history = s.append('user/message', { role: 'user', content: [{ type: 'text', text: 'later history '.repeat(80000) }] }, { surfaceOp: 'append' });
+  const latest = s.append('user/message', { role: 'user', content: [{ type: 'text', text: 'Keep latest instruction.' }] }, { surfaceOp: 'append' });
+  const header = structuredClone(s.requestHeader());
+  const before = f.meter.measure(s).totalTokens;
+  const second = await f.engine.compactIfNeeded(f.agent, 'pressure', f.signal);
+  assert.deepEqual(second.shadowedSeqs, [history.seq]);
+  assert.deepEqual(s.surface.nodes.slice(0, prefix.length), prefix);
+  assert.equal(s.surface.nodes[prefix.length], update.seq);
+  assert.equal(s.surface.nodes.at(-1), latest.seq);
+  assert.equal(f.state.requests.length, 2);
+  const summaryInput = JSON.stringify(f.state.requests[1].messages);
+  assert(summaryInput.includes('later history '));
+  assert(!summaryInput.includes('Updated synthetic system.'));
+  assert(!summaryInput.includes('Keep latest instruction.'));
+  assert(!summaryInput.includes(f.state.output));
+  assert(f.meter.measure(s).totalTokens < before);
+  assert.deepEqual(s.requestHeader(), header);
+  assert.equal(await f.engine.compactIfNeeded(f.agent, 'pressure', f.signal), null);
+  assert.equal(events(s, 'compaction/start').length, 2);
+  assert.equal(events(s, 'compaction/end').length, 2);
+});
+
 test('real summary-shrink failure closes the bracket and suppresses repeated calls', async () => {
   const f = context(); f.state.output = 'b'.repeat(1000000);
   const before = [...f.session.surface.nodes];
