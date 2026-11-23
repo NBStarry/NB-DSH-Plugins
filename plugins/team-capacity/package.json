@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "User-controlled Team member limit settings with an idle-member safety check.",
+  "scripts": { "test": "node --test core.test.mjs client.test.mjs ui-flow.test.mjs" },
   "engines": { "dsh": "0.2.2-alpha.2" },
   "exports": { ".": "./index.js", "./client": "./client.js", "./locale/*.json": "./locale/*.json", "./icon": "./icon.svg" },
   "files": ["index.js", "client.js", "cordis.patch.yml", "locale/*.json", "icon.svg"],
