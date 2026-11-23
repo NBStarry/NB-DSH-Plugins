@@ -48,17 +48,40 @@ window.__ModuleLoader__.load({
         ]) {
           ctx.slots.inject(name, () => {
             // Preserve the shipped component, actions, locale and navigation.
-            // Only its local selector sees a newest-first catalog.
-            const original = ctx.slots.entriesOfSlot(name).find(entry =>
-              entry.options.id === id && entry.options.priority !== -10);
-            if (!original || typeof original.component !== 'function') {
-              throw new Error(`Newest-first adapter: shipped catalog entry unavailable in ${name}`);
-            }
-            return ctx.slots.register({
-              ...original.options, name, priority: -10,
-              ...(original.inject ? { inject: original.inject } : {}),
-              ...(original.locale ? { locale: original.locale } : {}),
-            }, wrap(original.component));
+            // Only its local selector sees a newest-first catalog. The shipped
+            // entry may register after the slot is declared, so wait for it
+            // and follow it if it is replaced, instead of failing once.
+            // Read the raw ledger: once registered, this adapter wins the cell,
+            // so the winners-only view would hide the shipped entry it wraps.
+            // The registry notifies synchronously from inside register and
+            // dispose, so ignore those nested calls and re-check once after.
+            let wrapped, dispose, busy = false, again = false;
+            const sync = () => {
+              if (busy) { again = true; return; }
+              busy = true;
+              try {
+                do {
+                  again = false;
+                  const original = ctx.slots.entries(name).find(entry =>
+                    entry.options.id === id && entry.options.priority !== -10);
+                  const target = typeof original?.component === 'function' ? original : undefined;
+                  if (target?.component === wrapped) continue;
+                  const previous = dispose;
+                  dispose = undefined; wrapped = undefined;
+                  previous?.();
+                  if (!target) continue;
+                  wrapped = target.component;
+                  dispose = ctx.slots.register({
+                    ...target.options, name, priority: -10,
+                    ...(target.inject ? { inject: target.inject } : {}),
+                    ...(target.locale ? { locale: target.locale } : {}),
+                  }, wrap(target.component));
+                } while (again);
+              } finally { busy = false; }
+            };
+            const unsubscribe = ctx.slots.subscribe(name, sync);
+            sync();
+            return () => { unsubscribe(); dispose?.(); };
           });
         }
       },
