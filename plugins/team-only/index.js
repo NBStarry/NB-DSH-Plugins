@@ -4,9 +4,14 @@ import { Config, readPolicyConfig } from './config.js';
 import { registerTeamModelCommand } from './model.js';
 import { classify, delegationState, guardDecision, level2Tool } from './hierarchy.js';
 import { createCoordinationManager, coordinationBoundary } from './coordination.js';
+import { createFailureReporter } from './failures.js';
 export { Config } from './config.js';
 
 export const inject = ['agents', 'agentTeams', 'tools', 'systemPrompt', 'storageDomain', 'commands', 'configEditor'];
+// Cordis 4 FiberState.UNLOADING is a const enum, erased from runtime exports.
+const FIBER_UNLOADING = 5;
+const WAIT_POLICY = '不要调用 wait_agent 阻塞等待。用 list_agents 和 team_task_list 查看状态后继续独立工作；成员完成会以消息自动送达，确需等待时在后续步骤复查。';
+const FAILURE_POLICY = '收到成员失败上报后，先向用户说明谁出错、错误原因及已知影响；不要静默忽略或只记日志，等待用户指示或按已有授权处理。用户询问团队状态时，若成员有 lastFailure，主动说明谁出错、错误原因及已知影响，不要只报 running/inactive。';
 const parameters = {
   type: 'object', additionalProperties: false, required: ['action'],
   properties: {
@@ -25,11 +30,25 @@ const schema = z.object({
 }).strict();
 
 export async function apply(ctx, config = Config({})) {
-  const domain = await ctx.storageDomain.open({ name: 'local_team_roles', version: 1, layout: 'per-record', tables: { members: { valueSchema: schema } } });
-  let closing = false;
+  let closing = false, manager;
+  const start = Promise.withResolvers();
+  const opening = start.promise.then(() => ctx.storageDomain.open({ name: 'local_team_roles', version: 1, layout: 'per-record', tables: { members: { valueSchema: schema } } }));
+  ctx.effect(() => async () => {
+    closing = true;
+    const domain = await opening.catch(() => undefined);
+    if (!domain) return;
+    try { await manager?.drain(); } finally { await domain.close(); }
+  });
+  start.resolve();
+  const domain = await opening;
+  if (closing) return;
   const installations = new Map();
   const coordination = createCoordinationManager(ctx, config);
-  const manager = createRoleManager({
+  const failures = createFailureReporter(ctx);
+  ctx.effect(() => () => failures.close());
+  ctx.on('session/event', (session, event) => failures.observe(session, event));
+  ctx.on('agent/status', event => failures.status(event));
+  manager = createRoleManager({
     teams: ctx.agentTeams, table: domain.table('members'),
     capacity: () => {
       const entry = ctx.configEditor.entries().find(e => e.options.name === '@deepseek-ai/dsh-experimental-agent-team');
@@ -41,7 +60,6 @@ export async function apply(ctx, config = Config({})) {
       return { limit: entry?.options.config?.maxMembers ?? 16, activeTeammatesAcrossHost };
     },
   });
-  ctx.effect(() => async () => { closing = true; await manager.drain(); await domain.close(); });
   // Optional capability: role editing and hard policy remain active if a profile
   // has no LLM catalog, durability service, or native human-question service.
   ctx.inject(['llm', 'sessions'], registerTeamModelCommand);
@@ -50,13 +68,15 @@ export async function apply(ctx, config = Config({})) {
     const members = ctx.agentTeams.listMembers(agent);
     const rows = members.map(row => {
       const live = ctx.agents.get(row.id);
-      return { target: row.name, status: row.status, ...(live ? delegationState(ctx, live) : { kind: 'unknown', depth: null, eligible: false }) };
+      const lastFailure = row.role === 'teammate' ? failures.snapshot(agent, row.id) : undefined;
+      return { target: row.name, status: row.status, ...(live ? delegationState(ctx, live) : { kind: 'unknown', depth: null, eligible: false }), ...(lastFailure ? { lastFailure } : {}) };
     });
     const liveChildren = ctx.agents.list().filter(a => !members.some(row => row.id === a.id) && a.session?.header?.parentSession && members.some(row => row.id === a.session.header.parentSession)).map(a => ({ id: a.id, parentId: a.session.header.parentSession, ...delegationState(ctx, a) }));
     return { mode: readPolicyConfig(config).mode, boundary: coordinationBoundary, caller: delegationState(ctx, agent), members: rows, liveChildren };
   }
-  function install(agent) {
-    if (closing || installations.has(agent)) return;
+  const ownerClosing = () => closing || ctx.fiber?.uid === null || ctx.fiber?.state === FIBER_UNLOADING;
+  async function install(agent) {
+    if (ownerClosing() || installations.has(agent)) return;
     const state = { dispose: null, ownerDispose: null, denied: new Set(), warnings: [] };
     installations.set(agent, state);
     try {
@@ -67,7 +87,7 @@ export async function apply(ctx, config = Config({})) {
           disposers.push(agent.ctx.tools.guard(exec => guardDecision(ctx, BLOCKED, DENIAL, exec)));
           disposers.push(agent.ctx.tools.register(level2Tool(ctx, agent), { when: ({ agent: caller }) => caller === agent && delegationState(ctx, agent).eligible }));
           disposers.push(agent.ctx.systemPrompt.section({ name: 'local:team-only', order: 970, interpolate: false,
-            text: () => policyFor(readPolicyConfig(config), ctx.agentTeams.tryMembership(agent)?.role, classify(ctx, agent).kind),
+            text: () => `${policyFor(readPolicyConfig(config), ctx.agentTeams.tryMembership(agent)?.role, classify(ctx, agent).kind)}\n\n${WAIT_POLICY}${classify(ctx, agent).kind === 'root' ? `\n\n${FAILURE_POLICY}` : ''}`,
           }));
           disposers.push(agent.ctx.systemPrompt.context({ name: 'local:team-role', order: 975, required: true, interpolate: false, text: () => manager.context(agent) }));
           const refresh = () => {
@@ -99,7 +119,7 @@ export async function apply(ctx, config = Config({})) {
               execute: (args, exec) => { if (exec.agent !== agent) throw new Error('Invalid coordination mode caller'); return coordination.operate(agent, args, exec.signal); },
             }, { when: ({ agent: caller }) => caller === agent && classify(ctx, agent).kind === 'root' }));
             disposers.push(agent.ctx.tools.register({
-              name: 'team_hierarchy_status', description: 'Read current hierarchy mode, live Team classifications, depth limits and local backend availability. Lead only; does not change configuration or wake agents.',
+              name: 'team_hierarchy_status', description: 'Read hierarchy, Team status and this plugin run’s last observed member failure, if any. Lead only; does not change configuration or wake agents.',
               parameters: { type: 'object', additionalProperties: false, properties: {} },
               output: { schema: {}, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
               execute: (_args, exec) => { if (exec.agent !== agent) throw new Error('Invalid status tool caller'); return hierarchyStatus(agent); },
@@ -129,18 +149,28 @@ export async function apply(ctx, config = Config({})) {
       });
       // The plugin owns the scoped effect too, so disabling fully undoes policy.
       state.ownerDispose = ctx.effect(() => state.dispose);
-    } catch (error) { installations.delete(agent); throw error; }
+    } catch (error) {
+      installations.delete(agent);
+      // The registry can still contain an Agent while its scope is closing.
+      const closingAgent = !state.dispose && error?.code === 'INACTIVE_EFFECT' && (agent.ctx.fiber?.uid === null || agent.ctx.fiber?.state === FIBER_UNLOADING);
+      const inactiveOwner = error?.code === 'INACTIVE_EFFECT' && ownerClosing();
+      try { await state.dispose?.(); } catch (cleanupError) { throw new AggregateError([error, cleanupError], 'Agent installation and rollback failed'); }
+      if (closingAgent || inactiveOwner) return;
+      throw error;
+    }
   }
   // A global guard also rejects already-admitted legacy invocations while all
   // per-Agent installations and future resumes are being covered.
   ctx.effect(() => ctx.tools.guard(exec => guardDecision(ctx, BLOCKED, DENIAL, exec)));
-  ctx.on('agent/created', ({ agent }) => { install(agent); });
+  ctx.on('agent/created', async ({ agent }) => { await install(agent); });
   ctx.on('agent/disposed', ({ agent }) => {
+    failures.disposeAgent(agent);
     const state = installations.get(agent);
     installations.delete(agent);
     state?.ownerDispose?.();
   });
-  for (const agent of ctx.agents.list()) install(agent);
+  for (const agent of ctx.agents.list()) await install(agent);
+  if (ownerClosing()) return;
   ctx.effect(() => ctx.commands.register({
     name: 'team-hierarchy', description: 'Read current hierarchy identities and live depth/backend policy (no changes).',
     async handler({ agent }) {

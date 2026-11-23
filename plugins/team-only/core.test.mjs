@@ -68,8 +68,8 @@ test('persistence failure never publishes edit; aborted operation makes no chang
   assert.equal(f.shared.size, 0);
 });
 test('bounded policy covers every ordinary delegation path without blocking team tools', () => {
-  for (const name of ['subagent', 'subagent_fork', 'workflow', 'ralph']) assert.ok(BLOCKED.includes(name));
-  for (const name of ['spawn_teammate', 'send_message', 'team_task_create', 'team_roles']) assert.ok(!BLOCKED.includes(name));
+  assert.deepEqual(BLOCKED, ['subagent', 'subagent_fork', 'workflow', 'ralph', 'wait_agent']);
+  for (const name of ['spawn_teammate', 'send_message', 'list_agents', 'team_task_list', 'team_task_create', 'team_roles']) assert.ok(!BLOCKED.includes(name));
   assert.match(SHARED_POLICY, /only a depth-1 Team member may use spawn_level2/);
 });
 test('configuration validates and selects separate Lead and member prompts in both modes', () => {

@@ -4,7 +4,8 @@
 
 ## 工作方式
 
-- 当前配置的全部现有/新建 Agent：对 `subagent`、`subagent_fork`、`workflow`、`ralph` 设置执行 guard，并在每个 Agent scope 中隐藏可限制的继承工具。已接受的任务不会被取消。
+- 当前配置的全部现有/新建 Agent：对 `subagent`、`subagent_fork`、`workflow`、`ralph`、`wait_agent` 设置执行 guard，并在每个 Agent scope 中隐藏可限制的继承工具。已接受的任务不会被取消。加载时注册表中已在销毁的 Agent 会跳过；其他安装错误仍使插件加载失败。存储打开期间卸载会等待并关闭句柄。
+- 不使用 `wait_agent` 阻塞等待；用 `list_agents` 和 `team_task_list` 查看状态后继续独立工作，成员完成会以消息自动送达，确需等待时在后续步骤复查。此为协调建议，不能把消息送达当成工作完成。
 - 根负责人通过原生 Team 管理一级持久成员；一级成员在实时深度允许时通过 `spawn_level2({description:'审查登录逻辑',prompt:'审查身份验证变更并向直接父级报告问题和证据。'})` 创建受控本地二级子 Agent，直接收取、核实并汇总结果。二级不属于 Team roster 或任务板，不得继续委派，也不能绕过直接父级汇报。未验证成员身份、深度、后端或上限时拒绝。
 - 不停用底层 subagent 服务；Teams 依赖它。不是针对任意 shell、外部服务或自定义创建工具的安全沙箱。层级提示词是行为指导，不是操作系统安全隔离；更高优先级的权限仍然适用。
 - 固定角色优先复用，缺少角色才创建；不是自动把历史普通子 Agent 转为成员。
@@ -13,6 +14,14 @@
 - 角色由 `local_team_roles` storage domain 持久化，按团队 ID + immutable target 隔离。每次保存需匹配 revision，防止覆盖其他编辑。
 - 保存不会唤醒/中断成员。附加角色设定从下一次模型请求生效，通过 required runtime context 写入正常请求历史；不覆盖已发送的请求。冷恢复重新读取持久设定。
 - 清空 instructions 撤销附加工作指令；职责修改不能授予工具权限或覆盖系统/用户规则。
+
+## 成员回合失败上报
+
+仅对仍在线的直属 Team 成员自身 `turn/end` 的 error 汇总，普通子 Agent 和二级子 Agent 不越级上报。每成员 10 秒窗口最多一条，按错误码统计，附最近发生时间、连续失败次数及一行截断摘要；缺失原因显示“无原因”，不发送堆栈。AUTH、quota_exhausted、CONTEXT_WINDOW_EXCEEDED、MODEL_SWITCH_COMPACTION_FAILED、INVALID_REQUEST 等硬失败可在窗口结束后由插件以 `local-team-failure` 来源向原 Lead 的正式收件箱投递并唤醒 Lead；其他失败只在 Lead 运行时发送，否则暂存在进程内，等 Lead 再运行时发送。收到上报后 Lead 应告知用户谁、什么错及已知影响，等待用户指示或按已有授权处理。
+
+成员运行实例释放不再删除已捕获的失败或取消待发报告；投递时校验原 Lead 对象、Session 及成员名/ID 的团队名册归属，不依赖成员仍在线，也不把插件通知伪装为成员消息。Lead 释放或替换、插件卸载或进程退出仍会清除内存记录，不能承诺跨重启可靠投递。投递抛错保留诊断并标记 `delivery: 'unconfirmed'`，不自动重试，避免不确定提交造成重复。接收代表消息已入箱并记录 Session 事件，不代表同步落盘或 Lead 已处理。错误摘要来自上游，仍可能包含敏感信息，仅发送给同队 Lead。
+
+`team_hierarchy_status({})` 和 `/team-hierarchy` 的当前 Team 成员有未清除的已观察失败时附带 `lastFailure`（code、单行 message、ISO time、consecutive、windowCount）；没有则不出现该字段。非 error 的回合结束会清除该成员记录。此记录仅在内存中，只反映本次插件加载以来观察到的成员事件；冷成员仍可查询，Lead 释放、插件停启或进程重启后清空，不是持久错误历史。用户询问团队状态时，Lead 应说明失败成员、错误和已知影响。
 
 ## 工作模式与提示词
 
@@ -71,13 +80,13 @@ team_member_model({action:'set', target:'reviewer', provider:'openai-codex', mod
 
 部分成功不能当成失败回滚：`applied` 表示是否已 append 选择，`saved`/`durability` 表示 flush 结果，`messageAccepted`/`wokeMember` 表示唤醒结果。select 后 flush 失败返回 `applied:true,saved:false,durability:'unconfirmed'`；之后别的 listener/交付失败仍保留已应用/已持久化事实，交付不确定标记 `'unknown'`。没有应用但 send 已尝试的失败也结构化返回 `wakeAttempted:true,messageAccepted:'unknown'`。收到异常/部分结果后先由负责人调用工具 status，不要盲目重试或声称模型未改。全局默认模型、target、上下文和权限均不改。
 
-`llm`、`sessions` 可用时注册命令/工具；cold 另需 `sessionQuery`。缺失能力不影响原角色设置及硬限制。cold 恢复切换仅有 fake 回归覆盖，不能据此声称真实链路验证。
+`llm`、`sessions` 可用时注册命令/工具；cold 另需 `sessionQuery`。缺失能力不影响原角色设置及硬限制。负责人已真实验证 live reviewer 从 Sol 切到 `openai-codex/gpt-6.1-terra`，返回 `applied:true,saved:true,durability:'flushed'`，随后 status 确认相同选择；该次未唤醒成员。cold 恢复切换仍仅有 fake 回归覆盖，未声称真实链路验证。
 
 ## 容量
 
-团队容量由宿主配置决定；它是累计创建上限，包含失败成员。此插件不偷偷放宽容量或改写成员名单。
+内置团队 bundle 当前将 maxMembers 设为 **8**（服务默认值是 16），是累计创建上限，包含失败成员。此插件不偷偷放宽容量或改写成员名单。
 
-若另行安装并启用 `@local/dsh-team-capacity`：在“团队设置 → 团队成员数量上限”填写正整数并保存，可提高或降低，没有固定的32目标值。人数不含负责人，是累计创建额度而不是并发数；降低上限不会删除已有成员，达到或超过新上限的团队不能新建成员。修改影响当前 profile 下全部团队，检查全部成员都没有 running/provisioning 后才通过 `configEditor.edit` 变更；工作中的成员会导致明确拒绝，不强行中断。模型没有修改上限的工具，只有用户界面或 `/team-capacity {"action":"set","limit":12,"expectedLimit":8}`（示例；`expectedLimit` 必须替换为当前实际值） 用户命令可发起；expectedLimit 必须匹配当前值，防止旧页面覆盖新设置。`/team-capacity {"action":"status"}` 可读当前值。检查和写入期间临时阻止新的 spawn_teammate 与 spawn_teammate_with_model，成功或失败后均清理 guards，其余配置字段原样保留。团队服务更新可能卸载空闲成员运行实例，但持久历史保留，后续可以冷恢复。
+已配套安装 `@local/dsh-team-capacity`：在“团队设置 → 团队成员数量上限”填写正整数并保存，可提高或降低，没有固定的32目标值。人数不含负责人，是累计创建额度而不是并发数；降低上限不会删除已有成员，达到或超过新上限的团队不能新建成员。修改影响当前 profile 下全部团队，检查全部成员都没有 running/provisioning 后才通过 `configEditor.edit` 变更；工作中的成员会导致明确拒绝，不强行中断。模型没有修改上限的工具，只有用户界面或 `/team-capacity {"action":"set","limit":12,"expectedLimit":8}` 用户命令可发起；expectedLimit 必须匹配当前值，防止旧页面覆盖新设置。`/team-capacity {"action":"status"}` 可读当前值。检查和写入期间临时阻止新的 spawn_teammate 与 spawn_teammate_with_model，成功或失败后均清理 guards，其余配置字段原样保留。团队服务更新可能卸载空闲成员运行实例，但持久历史保留，后续可以冷恢复。
 
 ## 撤回
 
