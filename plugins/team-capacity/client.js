@@ -91,18 +91,7 @@ window.__ModuleLoader__.load({
       inject: ['slots', 'locale', 'remote', 'remote.commands'],
       apply(ctx) {
         ctx.effect(() => ctx.locale.register(ns, { zh, en }));
-        ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
-          name: 'conversation.session.header.actions', id: 'local-team-capacity', order: -14, locale: ns,
-          inject: sessionId => ({
-            execute: async (args, signal) => {
-              const response = await ctx.remote.commands.execute(sessionId, '/team-capacity ' + JSON.stringify(args), [], signal);
-              if (!response.ok) throw new Error(response.error?.message || 'Team capacity command unavailable');
-              const result = response.value?.result;
-              if (!result || result.kind !== 'success') throw new Error(result?.text || 'Team capacity command unavailable');
-              return JSON.parse(result.text);
-            },
-          }),
-        }, Capacity));
+        // The existing Team Settings dialog owns the capacity controls.
       },
     };
   },
