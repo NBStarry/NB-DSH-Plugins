@@ -1,0 +1,4 @@
+- id: cua
+  name: '@deepseek-ai/dsh-experimental-cua-macos'
+  config:
+    agentPreset: false

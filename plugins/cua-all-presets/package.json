@@ -1,0 +1,20 @@
+{
+  "name": "@local/dsh-cua-all-presets",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Make the existing Computer Use tool available to all Agent presets on macOS.",
+  "exports": {
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": ["cordis.patch.yml", "locale/*.json", "icon.svg"],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml",
+      "platforms": ["darwin"]
+    }
+  }
+}

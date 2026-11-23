@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Computer Use in all presets",
+    "description": "Makes the existing macOS Computer Use tool available to all Agent presets. Existing application approval and macOS permissions still apply."
+  }
+}
