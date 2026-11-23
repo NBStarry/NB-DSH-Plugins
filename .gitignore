@@ -4,3 +4,10 @@ node_modules/
 *.log
 .env
 .env.*
+.npm-cache/
+.pnpm-store/
+.cache/
+# Machine-local state that may sit in a working checkout; never committed.
+/.dsh-local/
+/local-dsh-test/
+/dev/

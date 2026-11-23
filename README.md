@@ -2,6 +2,8 @@
 
 A curated collection of DeepSeek Harness plugin bundles, personal experiments, and clearly marked third-party forks.
 
+Contribution and local-development rules: [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md).
+
 ## Contents
 
 - `plugins/`: plugin source packages. Some packages retain `private: true` and are not published to npm. A package's presence here does not imply it is compatible with every DSH version or ready for installation.
