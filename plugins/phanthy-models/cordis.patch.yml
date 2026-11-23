@@ -1,0 +1,10 @@
+- insert:
+    - id: phanthy-models
+      name: '@local/phanthy-dsh-bundle'
+      config:
+        models:
+          - id: claude-opus-5-5
+            contextWindow: 1049936
+            maxTokens: 128000
+            input: [text, image]
+            reasoning: adaptive
