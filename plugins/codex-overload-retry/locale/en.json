@@ -1,0 +1,1 @@
+{"meta":{"title":"Codex transient retry","description":"Precisely classifies Codex overload and generic WebSocket failures while retaining native shared retry limits, backoff and cancellation."}}

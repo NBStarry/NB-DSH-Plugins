@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Apply patch in standard mode",
+    "description": "Enables the built-in apply_patch tool for new standard-mode agents while retaining edit."
+  }
+}

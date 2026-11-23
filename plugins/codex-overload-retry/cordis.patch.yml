@@ -1,0 +1,3 @@
+- insert:
+    - id: codex-transient-retry
+      name: ./transient.js

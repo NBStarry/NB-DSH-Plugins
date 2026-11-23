@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "标准模式应用补丁",
+    "description": "为新建标准模式智能体启用内置 apply_patch 工具，同时保留 edit。"
+  }
+}

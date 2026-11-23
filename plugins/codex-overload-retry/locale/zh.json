@@ -1,0 +1,1 @@
+{"meta":{"title":"Codex 瞬态错误精准重试","description":"精准识别 Codex 过载与通用 WebSocket 失败，沿用原生共享重试次数、退避与取消，不更改策略。"}}

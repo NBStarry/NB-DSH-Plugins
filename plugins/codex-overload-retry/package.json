@@ -1,0 +1,11 @@
+{
+  "name": "@local/codex-overload-retry",
+  "version": "0.1.1",
+  "private": true,
+  "type": "module",
+  "description": "Precisely classify Codex overload and generic WebSocket failures for native bounded retries.",
+  "engines": { "dsh": "0.2.2-alpha.2 || 0.2.2-alpha.2.local.1.4" },
+  "exports": { ".": "./transient.js", "./locale/*.json": "./locale/*.json", "./icon": "./icon.svg" },
+  "files": ["transient.js", "cordis.patch.yml", "locale/*.json", "icon.svg", "README.md"],
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+}

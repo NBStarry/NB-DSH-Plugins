@@ -1,0 +1,13 @@
+{
+  "name": "@local/dsh-apply-patch",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Enable the built-in apply_patch tool in the standard agent preset.",
+  "exports": {
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": ["cordis.patch.yml", "locale/*.json", "icon.svg"],
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+}
