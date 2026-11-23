@@ -7,6 +7,8 @@ window.__ModuleLoader__.load({
     const dictionaries = {
       en: {
         title: 'Mobile connection',
+        diagnosticTitle: 'Diagnostic code',
+        diagnosticHelp: 'Select and copy this code for support. It identifies an observed stage, not the root cause. “cleanup-unconfirmed” means cleanup could not be confirmed, not that a resource leak was proven.',
         subtitle: 'Your workspace, on your phone.',
         privateAccess: 'TAILSCALE PRIVATE ACCESS',
         statusReady: 'Ready', statusOff: 'Off', statusWorking: 'Connecting', statusAction: 'Action needed', statusUnknown: 'Unavailable', statusChecking: 'Checking',
@@ -86,6 +88,8 @@ window.__ModuleLoader__.load({
       },
       zh: {
         title: '手机连接',
+        diagnosticTitle: '诊断码',
+        diagnosticHelp: '可选中并复制此码用于排查。它表示观察到的阶段，不等于根因。cleanup-unconfirmed 表示无法确认清理已完成，不代表已证实资源泄漏。',
         subtitle: '在手机上，继续你的工作。',
         privateAccess: 'TAILSCALE 私网访问',
         statusReady: '已就绪', statusOff: '已关闭', statusWorking: '连接中', statusAction: '待处理', statusUnknown: '不可用', statusChecking: '检查中',
@@ -164,6 +168,22 @@ window.__ModuleLoader__.load({
         qrAlt: '包含长期有效所有者登录链接的二维码',
       },
     };
+    const diagnosticPairs = new Set([
+      'preflight/status-timeout', 'preflight/status-failed', 'preflight/status-conflict',
+      'prelaunch/status-timeout', 'prelaunch/status-failed', 'prelaunch/status-conflict',
+      'readiness/status-timeout', 'readiness/status-failed', 'readiness/status-conflict', 'readiness/timeout',
+      'monitor/status-timeout', 'monitor/status-failed', 'monitor/mapping-mismatch',
+      'proxy/create-failed', 'proxy/create-timeout', 'proxy/runtime-failed',
+      'launch/failed', 'launch/child-error', 'launch/child-exit',
+      'configuration/missing', 'configuration/invalid', 'upstream/invalid', 'trust/rejected',
+      'probe/registration-failed', 'adapter/creation-failed', 'controller/creation-failed', 'controller/failed',
+      'status-route/registration-failed', 'reveal-route/registration-failed',
+    ]);
+    const diagnosticTextOf = value => {
+      const d = value?.diagnostic;
+      const pair = typeof d?.stage === 'string' && typeof d?.code === 'string' ? `${d.stage}/${d.code}` : '';
+      return [diagnosticPairs.has(pair) ? pair : '', value?.cleanupUnconfirmed === true ? 'cleanup-unconfirmed' : ''].filter(Boolean).join('\n');
+    };
     const styles = `
 .mc-root{color:var(--dsw-alias-label-primary);max-width:780px;margin:0 auto;padding:28px 24px 36px;font-size:13px;line-height:1.6;box-sizing:border-box}
 .mc-root *{box-sizing:border-box}.mc-root h2,.mc-root h3,.mc-root p{margin:0}.mc-root button,.mc-root input{font:inherit}.mc-root button{appearance:none}
@@ -200,6 +220,7 @@ window.__ModuleLoader__.load({
           const [trustPhase, setTrustPhase] = React.useState('idle');
           const [trustPreview, setTrustPreview] = React.useState(null);
           const [trustConfirmed, setTrustConfirmed] = React.useState(false);
+          const [diagnosticText, setDiagnosticText] = React.useState('');
           const mounted = React.useRef(false);
           const revealRequest = React.useRef(null);
           const statusRequest = React.useRef(null);
@@ -248,6 +269,7 @@ window.__ModuleLoader__.load({
                         : value?.state === 'needs-trusted-host' ? 'needsTrustedHost'
                           : value?.state === 'not-configured' && value.available === false ? 'notConfigured' : 'unavailable';
                 setStatus(next);
+                setDiagnosticText(diagnosticTextOf(value));
                 observed.current = { state: next, enabled: value?.connectionEnabled === true, authority: typeof value?.authority === 'string' ? value.authority : '' };
                 if (trustPending.current && next === 'ready' && value?.available === true && observed.current.enabled && observed.current.authority === trustPending.current) {
                   trustPending.current = false;
@@ -276,19 +298,19 @@ window.__ModuleLoader__.load({
                 if (next !== 'ready') clearSecret();
               } catch {
                 if (!controller.signal.aborted && mounted.current) {
-                  setStatus('unavailable'); setEnabled(null); observed.current = null; clearSecret();
+                  setStatus('unavailable'); setEnabled(null); observed.current = null; clearSecret(); setDiagnosticText('');
                   if (!trustPending.current && (trustRequest.current || trustPreviewRef.current)) { clearTrustPreview(); setTrustPhase('idle'); }
                 }
               }
             };
             const visibility = () => {
               if (document.visibilityState === 'hidden') {
-                statusRequest.current?.abort(); observed.current = null; clearSecret();
+                statusRequest.current?.abort(); observed.current = null; clearSecret(); setDiagnosticText('');
                 if (!trustPending.current) { clearTrustPreview(); setTrustPhase('idle'); }
               } else void check();
             };
             const pageHide = () => {
-              statusRequest.current?.abort(); observed.current = null; clearSecret();
+              statusRequest.current?.abort(); observed.current = null; clearSecret(); setDiagnosticText('');
               if (!trustPending.current) { clearTrustPreview(); setTrustPhase('idle'); }
             };
             document.addEventListener('visibilitychange', visibility);
@@ -305,7 +327,7 @@ window.__ModuleLoader__.load({
           }, []);
           const configure = async connectionEnabled => {
             if (enabled === null || desiredRef.current !== null || (connectionEnabled && (!confirmed || !authority.trim() || !socketParent.trim() || !executable.trim()))) return;
-            clearSecret();
+            clearSecret(); setDiagnosticText('');
             const trustWasPending = Boolean(trustPending.current);
             trustPending.current = false;
             clearTrustPreview();
@@ -528,6 +550,10 @@ window.__ModuleLoader__.load({
                 feedback(message),
               ),
             ),
+            diagnosticText && h('section', { className: 'mc-notice', 'data-testid': 'connection-diagnostic' },
+              h('label', { className: 'mc-field' }, h('span', { className: 'mc-label' }, t('diagnosticTitle')),
+                h('textarea', { className: 'mc-input mc-code', readOnly: true, rows: 2, value: diagnosticText, 'data-field': 'diagnostic-code', spellCheck: false })),
+              h('p', { className: 'mc-help' }, t('diagnosticHelp'))),
             configMessage && feedback(configMessage),
             desired !== null && h('div', { className: 'mc-actions' }, action('stopWaiting', 'stop-waiting', stopWaiting)),
             ['conflict', 'unavailable', 'pending', 'uncertain', 'effective'].includes(trustPhase) && feedback(`trust${trustPhase[0].toUpperCase()}${trustPhase.slice(1)}`),

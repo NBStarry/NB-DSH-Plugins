@@ -1,6 +1,6 @@
 import { isAbsolute } from 'node:path';
 import { isIP } from 'node:net';
-import { createServeRuntime, createTailscaleAdapter } from './serve-runtime.mjs';
+import { createServeRuntime, createTailscaleAdapter, sanitizeDiagnostic } from './serve-runtime.mjs';
 import { listenPrivateProxy } from './private-proxy.mjs';
 import { registerProbeResource } from './probe-resource.mjs';
 
@@ -42,7 +42,11 @@ export function createMobileRuntime({ webServer, connection, authority, socketPa
   const makeProxy = factories.proxy ?? listenPrivateProxy;
   const makeQr = factories.qr ?? defaultQr;
   let state = connectionEnabled ? 'starting' : 'disabled', active = true, controller, marker, unregisterReveal, unregisterStatus, startPromise, cleanupPromise, stopPromise;
-  const status = () => ({ state, available: active && state === 'ready' && controller?.phase === 'ready', connectionEnabled, authority: authority ?? '', socketParent: socketParent ?? '', tailscaleExecutable: tailscaleExecutable ?? '' });
+  let diagnostic = null, cleanupUnconfirmed = false;
+  const record = (stage, code) => { diagnostic ??= sanitizeDiagnostic({ stage, code }); };
+  const controllerDiagnostic = () => { try { return sanitizeDiagnostic(controller?.diagnostic); } catch { return null; } };
+  const controllerCleanup = () => { try { return controller?.cleanupUnconfirmed === true; } catch { return false; } };
+  const status = () => ({ state, available: active && state === 'ready' && controller?.phase === 'ready', connectionEnabled, authority: authority ?? '', socketParent: socketParent ?? '', tailscaleExecutable: tailscaleExecutable ?? '', diagnostic: sanitizeDiagnostic(diagnostic), cleanupUnconfirmed: cleanupUnconfirmed || controllerCleanup() });
   const canReveal = () => active && state === 'ready' && controller?.phase === 'ready' && trusted(connection, authority);
 
   async function reveal(request) {
@@ -71,11 +75,12 @@ export function createMobileRuntime({ webServer, connection, authority, socketPa
     try { closing = controller?.stop(); } catch { closing = Promise.reject(Error('unavailable')); }
     // Start both operations before awaiting either; a stalled route disposer
     // must not keep the listener or Serve process alive.
-    const results = Promise.allSettled([Promise.resolve(revoke), Promise.resolve(closing)]);
+    const observeCleanup = promise => Promise.resolve(promise).catch(() => { cleanupUnconfirmed = true; throw Error('unavailable'); });
+    const results = Promise.allSettled([observeCleanup(revoke), observeCleanup(closing)]);
     cleanupPromise = (async () => {
       let bad = (await results).some(result => result.status === 'rejected');
       try { marker?.dispose(); } catch { bad = true; }
-      if (bad) throw Error('unavailable');
+      if (bad) { cleanupUnconfirmed = true; throw Error('unavailable'); }
     })();
     return cleanupPromise;
   }
@@ -86,7 +91,7 @@ export function createMobileRuntime({ webServer, connection, authority, socketPa
       let bad = false;
       try { await cleanup; } catch { bad = true; }
       try { await unregisterStatus?.(); } catch { bad = true; }
-      if (bad) throw Error('unavailable');
+      if (bad) { cleanupUnconfirmed = true; throw Error('unavailable'); }
     })();
     return stopPromise;
   }
@@ -95,24 +100,42 @@ export function createMobileRuntime({ webServer, connection, authority, socketPa
     if (startPromise) return startPromise;
     if (!active) return Promise.resolve();
     startPromise = (async () => {
+      let stage = 'status-route', code = 'registration-failed';
       try {
         unregisterStatus = connection.fetch.register({ path: '/api/mobile-connection/status', methods: ['GET'], requestBody: 'buffered', fetch: async () => Response.json(status(), { headers }) });
         if (!connectionEnabled) return;
-        if (!authority || !socketParent || !tailscaleExecutable) { state = 'not-configured'; return; }
+        if (!authority || !socketParent || !tailscaleExecutable) { state = 'not-configured'; record('configuration', 'missing'); return; }
+        stage = 'configuration'; code = 'invalid';
         baseFor(authority);
         if (typeof socketParent !== 'string' || !isAbsolute(socketParent) || socketParent.includes('\0') || typeof tailscaleExecutable !== 'string' || !isAbsolute(tailscaleExecutable) || tailscaleExecutable.includes('\0')) throw Error('invalid');
+        stage = 'upstream'; code = 'invalid';
         upstreamPort(webServer);
-        if (!trusted(connection, authority)) { state = 'needs-trusted-host'; return; }
+        if (!trusted(connection, authority)) { state = 'needs-trusted-host'; record('trust', 'rejected'); return; }
+        stage = 'probe'; code = 'registration-failed';
         marker = makeMarker(webServer);
-        controller = makeController({ authority, adapter: makeAdapter({ executable: tailscaleExecutable }), createProxy: () => makeProxy({ parent: socketParent, authority, getUpstreamPort: () => upstreamPort(webServer), probe: marker, ingress: 'tailscale-unix' }) });
-        controller.failed?.then(() => { if (active) void shutdown('failed').catch(() => {}); }, () => { if (active) void shutdown('failed').catch(() => {}); });
+        stage = 'adapter'; code = 'creation-failed';
+        const adapter = makeAdapter({ executable: tailscaleExecutable });
+        stage = 'controller';
+        controller = makeController({ authority, adapter, createProxy: () => makeProxy({ parent: socketParent, authority, getUpstreamPort: () => upstreamPort(webServer), probe: marker, ingress: 'tailscale-unix' }) });
+        const controllerFailed = () => {
+          if (!active) return;
+          diagnostic ??= controllerDiagnostic(); record('controller', 'failed');
+          void shutdown('failed').catch(() => {});
+        };
+        controller.failed?.then(controllerFailed, controllerFailed);
+        code = 'failed';
         await controller.start();
         if (!active || controller.phase !== 'ready') return;
-        if (!trusted(connection, authority)) { await shutdown('needs-trusted-host'); return; }
+        if (!trusted(connection, authority)) { record('trust', 'rejected'); await shutdown('needs-trusted-host'); return; }
+        stage = 'reveal-route'; code = 'registration-failed';
         unregisterReveal = connection.fetch.register({ path: '/api/mobile-connection/reveal', methods: ['POST'], requestBody: 'buffered', fetch: reveal });
         state = 'ready';
       } catch {
-        if (active) { try { await shutdown('failed'); } catch {} }
+        if (active) {
+          if (stage === 'controller' && code === 'failed') diagnostic ??= controllerDiagnostic();
+          record(stage, code);
+          try { await shutdown('failed'); } catch {}
+        }
       }
     })();
     return startPromise;

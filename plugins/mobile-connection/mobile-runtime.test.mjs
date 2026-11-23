@@ -20,10 +20,57 @@ function fixture(options = {}) {
     proxy: async () => { throw Error('not called'); },
     qr: options.qr ?? (async () => '<svg>SYNTHETIC</svg>'),
   };
-  const runtime = createMobileRuntime({ webServer, connection, authority: 'mobile.example.test:8443', socketParent: '/tmp', tailscaleExecutable: '/synthetic/tailscale', connectionEnabled: options.connectionEnabled ?? true, factories });
+  const runtime = createMobileRuntime({ webServer, connection, authority: 'mobile.example.test:8443', socketParent: '/tmp', tailscaleExecutable: '/synthetic/tailscale', connectionEnabled: options.connectionEnabled ?? true, factories: { ...factories, ...options.factories }, ...options.runtime });
   const call = (path, method) => routes.get(`/api/mobile-connection/${path}`)?.fetch(new Request(`http://localhost/api/mobile-connection/${path}`, { method }));
-  return { routes, events, created, runtime, call, webServer, fail, get authCalls() { return authCalls; }, setTrust(value) { trust = value; } };
+  return { routes, events, created, runtime, call, webServer, controller, fail, get authCalls() { return authCalls; }, setTrust(value) { trust = value; } };
 }
+
+test('startup stage diagnostics contain only fixed pairs, never source errors', async () => {
+  const secret = 'token=DO_NOT_COPY /private/example https://secret.invalid';
+  const cases = [
+    [{ runtime: { authority: '' } }, 'configuration', 'missing'],
+    [{ runtime: { socketParent: 'relative' } }, 'configuration', 'invalid'],
+    [{ trust: false }, 'trust', 'rejected'],
+    [{ factories: { marker() { throw Error(secret); } } }, 'probe', 'registration-failed'],
+    [{ factories: { adapter() { throw Error(secret); } } }, 'adapter', 'creation-failed'],
+    [{ factories: { controller() { throw Error(secret); } } }, 'controller', 'creation-failed'],
+    [{ start() { throw Error(secret); } }, 'controller', 'failed'],
+  ];
+  for (const [options, stage, code] of cases) {
+    const f = fixture(options); await f.runtime.start();
+    const response = await f.call('status', 'GET'); const value = await response.json();
+    assert.deepEqual(value.diagnostic, { stage, code }); assert.equal(JSON.stringify(value).includes(secret), false);
+    assert.equal(f.authCalls, 0); await f.runtime.stop();
+  }
+  const f = fixture(); f.webServer.port = 0; await f.runtime.start();
+  assert.deepEqual(f.runtime.status().diagnostic, { stage: 'upstream', code: 'invalid' }); await f.runtime.stop();
+});
+
+test('controller diagnosis is rebuilt and unknown or throwing values never leak', async () => {
+  let coerced = 0;
+  const poison = { secret: 'SECRET', toString() { coerced++; return 'proxy'; }, valueOf() { coerced++; return 'proxy'; } };
+  for (const d of [{ stage: 'proxy', code: 'create-failed', token: 'SECRET' }, { stage: 'proxy', code: 'child-exit' }, { stage: 'SECRET', code: 'SECRET' }, { stage: poison, code: 'create-failed' }, { stage: 'proxy', code: poison }]) {
+    const f = fixture({ start() { throw Error('SECRET'); } }); f.controller.diagnostic = d;
+    await f.runtime.start();
+    assert.deepEqual(f.runtime.status().diagnostic, d.stage === 'proxy' && d.code === 'create-failed' ? { stage: 'proxy', code: 'create-failed' } : { stage: 'controller', code: 'failed' });
+    assert.equal(JSON.stringify(f.runtime.status()).includes('SECRET'), false); await f.runtime.stop();
+  }
+  assert.equal(coerced, 0);
+  const f = fixture(); Object.defineProperty(f.controller, 'diagnostic', { get() { throw Error('SECRET'); } });
+  await f.runtime.start(); f.fail(); await new Promise(r => setImmediate(r));
+  assert.deepEqual(f.runtime.status().diagnostic, { stage: 'controller', code: 'failed' }); await f.runtime.stop();
+});
+
+test('cleanup failure remains visible without overwriting the primary diagnosis', async () => {
+  const f = fixture(); f.controller.stop = async () => { throw Error('SECRET'); };
+  await f.runtime.start(); f.fail(); await new Promise(r => setImmediate(r));
+  const value = await (await f.call('status', 'GET')).json();
+  assert.deepEqual(value.diagnostic, { stage: 'controller', code: 'failed' }); assert.equal(value.cleanupUnconfirmed, true);
+  assert.equal(JSON.stringify(value).includes('SECRET'), false); await assert.rejects(f.runtime.stop(), /unavailable/);
+  const g = fixture({ factories: { marker: () => ({ dispose() { throw Error('SECRET'); } }) } });
+  await g.runtime.start(); await assert.rejects(g.runtime.stop(), /unavailable/);
+  assert.equal(g.runtime.status().cleanupUnconfirmed, true); assert.equal(g.runtime.status().diagnostic, null);
+});
 
 test('disabled feature exposes status without listeners, token or process', async () => {
   const f = fixture({ connectionEnabled: false }); await f.runtime.start();
@@ -35,7 +82,7 @@ test('disabled feature exposes status without listeners, token or process', asyn
 
 test('ready owner route has no-store synthetic url/QR and disposal revokes before stop', async () => {
   const f = fixture(); await f.runtime.start();
-  assert.deepEqual(f.runtime.status(), { state: 'ready', available: true, connectionEnabled: true, authority: 'mobile.example.test:8443', socketParent: '/tmp', tailscaleExecutable: '/synthetic/tailscale' });
+  assert.deepEqual(f.runtime.status(), { state: 'ready', available: true, connectionEnabled: true, authority: 'mobile.example.test:8443', socketParent: '/tmp', tailscaleExecutable: '/synthetic/tailscale', diagnostic: null, cleanupUnconfirmed: false });
   assert.equal(f.created.length, 1); assert(f.events.includes('adapter:/synthetic/tailscale')); assert.deepEqual(f.created[0].adapter, { synthetic: true });
   const response = await f.call('reveal', 'POST');
   assert.equal(response.status, 200); assert.equal(response.headers.get('cache-control'), 'no-store, private'); assert.equal(response.headers.get('referrer-policy'), 'no-referrer');

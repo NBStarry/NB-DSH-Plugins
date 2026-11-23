@@ -58,6 +58,32 @@ function harness(fetch, options = {}) {
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const response = value => ({ ok: true, status: 200, json: async () => value });
 
+test('diagnostic display is selectable, allowlisted and clears on old or failed responses', async () => {
+  let current = { state: 'failed', available: false, connectionEnabled: true, authority: 'SECRET', diagnostic: { stage: 'proxy', code: 'create-failed', token: 'SECRET' }, cleanupUnconfirmed: true };
+  let fail = false;
+  const h = harness(async () => { if (fail) throw Error('SECRET'); return response(current); });
+  const shown = () => h.walk(h.render(), n => n.type === 'textarea' && n.props['data-field'] === 'diagnostic-code');
+  try {
+    await flush(); assert.equal(shown().props.value, 'proxy/create-failed\ncleanup-unconfirmed'); assert.equal(shown().props.readOnly, true);
+    current = { ...current, diagnostic: { stage: 'proxy', code: 'child-exit' }, cleanupUnconfirmed: false }; h.poll(); await flush(); assert.equal(shown(), undefined);
+    current = { ...current, diagnostic: { stage: 'SECRET', code: 'SECRET' }, cleanupUnconfirmed: true }; h.poll(); await flush(); assert.equal(shown().props.value, 'cleanup-unconfirmed');
+    current = { state: 'ready', available: true, connectionEnabled: true }; h.poll(); await flush(); assert.equal(shown(), undefined);
+    current = { ...current, diagnostic: { stage: 'monitor', code: 'mapping-mismatch' } }; h.poll(); await flush(); assert.ok(shown());
+    h.visibility('hidden'); assert.equal(shown(), undefined); h.visibility('visible'); await flush(); assert.ok(shown());
+    h.pageHide(); assert.equal(shown(), undefined); h.poll(); await flush(); assert.ok(shown());
+    fail = true; h.poll(); await flush(); assert.equal(shown(), undefined);
+  } finally { h.cleanup(); }
+});
+
+test('cancelled status response cannot restore a stale diagnostic', async () => {
+  let resolve;
+  const h = harness(() => new Promise(r => { resolve = r; }));
+  try {
+    h.pageHide(); resolve(response({ state: 'failed', diagnostic: { stage: 'proxy', code: 'create-failed' } })); await flush();
+    assert.equal(h.walk(h.render(), n => n.props['data-testid'] === 'connection-diagnostic'), undefined);
+  } finally { h.cleanup(); }
+});
+
 test('reveal, cancel stale response, show QR, hide, and unmount', async () => {
   let revealResolve;
   const h = harness(url => url.endsWith('/status')
