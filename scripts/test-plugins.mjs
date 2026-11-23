@@ -58,13 +58,14 @@ async function packageEntries(root) {
     try {
       manifest = JSON.parse(await fs.readFile(path.join(dir, 'package.json'), 'utf8'));
     } catch (error) {
-      throw new Error(`${manifestRel}: ${error.message}`);
+      entries.push({ dir, rel, name: rel, hasTest: false, invalid: error.message });
+      continue;
     }
     const test = manifest?.scripts?.test;
     entries.push({
       dir,
       rel,
-      name: typeof manifest.name === 'string' && manifest.name ? manifest.name : rel,
+      name: typeof manifest?.name === 'string' && manifest.name ? manifest.name : rel,
       hasTest: typeof test === 'string' && test.trim().length > 0,
     });
   }
@@ -148,10 +149,12 @@ async function prepareTempRoot() {
 async function main() {
   const root = parseArgs(process.argv.slice(2));
   const entries = await packageEntries(root);
+  const invalid = entries.filter((entry) => entry.invalid);
   const runnable = entries.filter((entry) => entry.hasTest);
-  const skipped = entries.filter((entry) => !entry.hasTest);
+  const skipped = entries.filter((entry) => !entry.hasTest && !entry.invalid);
   const passed = [];
-  const failed = [];
+  const failed = [...invalid];
+  for (const entry of invalid) console.log(`FAIL ${entry.rel} (invalid package.json: ${entry.invalid})`);
   const changed = [];
   const cleanupErrors = [];
 
