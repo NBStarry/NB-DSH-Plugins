@@ -1,0 +1,22 @@
+# Behaviour settings the test instance shares with the daily desktop profile.
+# `mirror.py install` merges these rows into the test profile's cordis.patch.yml.
+# Only behaviour that must match goes here; anything machine-specific or personal
+# (model channels, credentials, paths, prompts) stays in the instance's own settings.
+- id: locale
+  name: "@deepseek-ai/dsh-client-locale"
+  config:
+    preference: zh
+- id: subagent
+  name: "@deepseek-ai/dsh-subagent"
+  config:
+    maxActiveSubagents: 16
+    maxDepth: 2
+- id: ui-chat
+  name: "@deepseek-ai/dsh-client-ui-chat"
+  config:
+    transcriptView: detailed
+    collapseTiming: next-input
+- id: ui-conversation
+  name: "@deepseek-ai/dsh-client-ui-conversation"
+  config:
+    busyEnter: steer

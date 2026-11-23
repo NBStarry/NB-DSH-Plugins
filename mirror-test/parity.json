@@ -1,0 +1,36 @@
+{
+  "$comment": "Declared, reasoned differences between mirror-test and the daily desktop profile. parity.py fails on any difference not listed here.",
+  "bundles": {
+    "@local/dsh-mobile-connection": "Publishes a Tailscale endpoint; the test instance does not expose a network service.",
+    "dsh-codex-oauth": "Needs a personal ChatGPT subscription login; credentials are not copied.",
+    "@local/phanthy-dsh-bundle": "Needs a personal model gateway and its account.",
+    "@local/feishu-task-panel": "Reads real Feishu task data.",
+    "dsh-plugin-notify": "Pushes notifications to real channels.",
+    "@superbei/dsh-project-workbench": "Developed outside this repository; installed from its own working copy, not a pinned commit."
+  },
+  "rows": {
+    "llm-pi-ai": "Model channels and their credentials are set inside each instance, never in git.",
+    "agent-default-model": "The test instance picks its own default model.",
+    "ui-settings-account": "Account state differs per instance.",
+    "connection": "The remote access address differs per instance.",
+    "mobile-connection": "Plugin not installed in the test instance.",
+    "phanthy-models": "Plugin not installed in the test instance.",
+    "plugin-market": "Index sources are a personal preference.",
+    "subagent-model-selection-settings": "Depends on personal model channels.",
+    "session-codex-fast-adapter": "Depends on personal model channels.",
+    "ui-theme": "Theme is stored in the instance's local settings.",
+    "ui-settings": "Settings-page switches with no behavioural effect.",
+    "ui-settings-general": "Welcome-notice acknowledgement is per instance.",
+    "agent-preset-registry": "The test instance uses the bundle default, which equals the daily effective value.",
+    "permission": "The test instance uses the bundle default preset, which equals the daily effective value.",
+    "cua": "Holds the machine-local helperPath; the CUA bundles are disabled in both instances.",
+    "local-team-only": "The coordinator prompt is personal content; the test instance keeps the plugin default.",
+    "web": "Search and fetch providers need personal API access."
+  },
+  "rowKeys": {
+    "ui-chat": {
+      "performanceUsage": "Client display preference stored in the instance's local settings.",
+      "linkOpening": "Client display preference stored in the instance's local settings."
+    }
+  }
+}

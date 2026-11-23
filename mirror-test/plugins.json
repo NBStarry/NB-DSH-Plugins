@@ -1,0 +1,26 @@
+{
+  "$comment": "What the mirror-test instance runs. Sources are the same pinned commits or official versions the daily desktop profile uses. `shipped` lists bundles that come with the installed app and only need selecting. Anything the desktop has that is not listed here must appear in parity.json with a reason.",
+  "shipped": [
+    "@deepseek-ai/dsh-base",
+    "@deepseek-ai/dsh-web-app",
+    "@deepseek-ai/dsh-experimental-agent-team-profile",
+    "@deepseek-ai/dsh-experimental-plugin-market-bundle",
+    "@deepseek-ai/dsh-experimental-auto-review",
+    "@deepseek-ai/dsh-experimental-forge-bundle"
+  ],
+  "plugins": [
+    { "name": "@local/dsh-skill-manager", "spec": "git+https://github.com/NBStarry/NB-DSH-Plugins.git#8bf60090ffbf2956aecac89a3cb81326c6e4222e&path:/plugins/skill-manager" },
+    { "name": "@local/dsh-todo-default-open", "spec": "git+https://github.com/NBStarry/NB-DSH-Plugins.git#299f3f6b0e9225315b55db1961e7bd6c7a86f1b4&path:/plugins/todo-default-open" },
+    { "name": "@local/dsh-subagent-newest-first", "spec": "git+https://github.com/NBStarry/NB-DSH-Plugins.git#8754d86926a46670c71ec78669a054b1ae5dc8c0&path:/plugins/subagent-newest-first" },
+    { "name": "@local/dsh-apply-patch", "spec": "git+https://github.com/NBStarry/NB-DSH-Plugins.git#8bf60090ffbf2956aecac89a3cb81326c6e4222e&path:/plugins/dsh-apply-patch" },
+    { "name": "@local/codex-overload-retry", "spec": "git+https://github.com/NBStarry/NB-DSH-Plugins.git#8bf60090ffbf2956aecac89a3cb81326c6e4222e&path:/plugins/codex-overload-retry" },
+    { "name": "dsh-compaction-policy", "spec": "git+https://github.com/NBStarry/NB-DSH-Plugins.git#6105cd4060e4184a7e23bff8d2b6d3406167c135&path:/forks/dsh-compaction-policy" },
+    { "name": "@local/dsh-session-messenger", "spec": "git+https://github.com/NBStarry/NB-DSH-Plugins.git#0732bffacafaf8d5d4b210c43b44d9ca6ec24cfb&path:/plugins/dsh-session-messenger" },
+    { "name": "@local/dsh-connection-stability", "spec": "git+https://github.com/NBStarry/NB-DSH-Plugins.git#299f3f6b0e9225315b55db1961e7bd6c7a86f1b4&path:/plugins/connection-stability" },
+    { "name": "@local/dsh-team-capacity", "spec": "git+https://github.com/NBStarry/NB-DSH-Plugins.git#afc429c5b7145fc60928081114421822a1228947&path:/plugins/team-capacity" },
+    { "name": "@local/dsh-team-only", "spec": "git+https://github.com/NBStarry/NB-DSH-Plugins.git#e274e68df27b44592dc2b6cc98c22414f6f8baee&path:/plugins/team-only" },
+    { "name": "@nbstarry/dsh-codex-fast", "spec": "git+https://github.com/NBStarry/NB-DSH-Plugins.git#299f3f6b0e9225315b55db1961e7bd6c7a86f1b4&path:/plugins/session-codex-fast" },
+    { "name": "@deepseek-ai/dsh-cua-bundle", "spec": "@deepseek-ai/dsh-cua-bundle@0.2.2-alpha.2", "enabled": false },
+    { "name": "@local/dsh-cua-all-presets", "spec": "git+https://github.com/NBStarry/NB-DSH-Plugins.git#2b329615ed795fa2970e18686a4d453ab5682719&path:/plugins/cua-all-presets", "enabled": false }
+  ]
+}
