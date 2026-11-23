@@ -4,7 +4,7 @@ import { apply } from '../index.js';
 
 test('registers and disposes tools and sends immutable plugin-sourced messages', async () => {
   const caller = { id: 'caller', session: { id: 'caller', header: { id: 'caller' } } };
-  const target = { id: 'target', session: { id: 'target', header: { id: 'target' } }, messages: [], followup(message) { this.messages.push(message); } };
+  const target = { id: 'target', session: { id: 'target', header: { id: 'target' } }, messages: [], steer(message) { this.messages.push(message); } };
   const agents = new Map([[caller.id, caller], [target.id, target]]);
   const tools = new Map();
   const disposers = [];
