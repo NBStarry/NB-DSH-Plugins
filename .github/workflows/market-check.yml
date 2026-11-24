@@ -1,0 +1,53 @@
+name: Market checks
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  market-check:
+    name: market-check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: Check out exact PR event commit with history
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Verify base history
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$BASE_SHA"
+          git cat-file -e "$BASE_SHA^{commit}"
+
+      - name: Install validator dependencies
+        run: npm ci --prefix market --ignore-scripts
+
+      - name: Test generator
+        run: node market/test.mjs
+
+      - name: Test market checks and deployment verifier
+        run: node --test market/check.test.mjs market/verify-deployed.test.mjs
+
+      - name: Check exact candidate SHA against base
+        run: node market/check.mjs "$GITHUB_SHA" "$BASE_SHA"
+
+      - name: Generate and validate from exact candidate SHA
+        run: |
+          node market/generate.mjs "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$RUNNER_TEMP/plugin-index/index.json"
+          node market/validate.mjs "$RUNNER_TEMP/plugin-index/index.json"
