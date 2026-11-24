@@ -41,6 +41,10 @@ async function bench(options: { addressed?: boolean } = {}) {
   ctx.provide('uiWorkspace', {
     openSession: (target: unknown) => { navigation.push(['open', target]) },
   } as never)
+  ctx.provide('remote', {})
+  ctx.provide('remote.commands', {
+    execute: () => { throw new Error('Navigation tests must not execute management commands') },
+  })
   ctx.provide('conversation', {})
   ctx.provide('locale', new LocaleRuntime(ctx))
   await ctx.plugin(SlotRegistry).await()
@@ -76,7 +80,7 @@ async function bench(options: { addressed?: boolean } = {}) {
 describe('ui-team browser plugin', () => {
   it('registers one disposable header action without a Team Remote namespace', async () => {
     const b = await bench()
-    expect(inject).toEqual(['sessions', 'uiWorkspace', 'slots', 'locale'])
+    expect(inject).toEqual(['sessions', 'uiWorkspace', 'slots', 'locale', 'remote', 'remote.commands'])
     expect(b.entry()).toMatchObject({
       options: { id: 'agent-team', order: -20 },
       locale: 'agent-team',
