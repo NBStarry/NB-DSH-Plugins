@@ -3,6 +3,7 @@
 import { z } from 'zod'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import { pluginRecordOf } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionEventMap, SessionId } from '@deepseek-ai/dsh-session'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type {
@@ -21,7 +22,16 @@ import {
   TeamTaskId as toTeamTaskId,
 } from './types.ts'
 import { assertTaskGraphCandidate } from './task-graph.ts'
-import { projectTaskView } from './task-view.ts'
+import { projectTaskView, taskViewContext } from './task-view.ts'
+import {
+  applyTaskArchiveRecord,
+  isTaskArchivedEntry,
+  TASK_ARCHIVE_RECORD,
+  taskArchiveEntrySchema,
+  taskArchiveIndex,
+  taskArchiveRecordSchema,
+} from './task-archive.ts'
+import type { TaskArchiveEntry } from './task-archive.ts'
 
 const nonNegativeSafeInteger = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 const positiveSafeInteger = nonNegativeSafeInteger.min(1)
@@ -135,6 +145,8 @@ export interface TeamState {
   readonly messages: readonly TeamMessageSnapshot[]
   readonly delivered: readonly TeamMessageId[]
   readonly nextTaskNumber: number
+  /** Explicit archive/restore side markers folded from ignorable plugin records. */
+  readonly archives: readonly TaskArchiveEntry[]
 }
 
 /**
@@ -150,6 +162,7 @@ export function emptyTeamState(rootId: SessionId): TeamProjectionState {
     messages: [],
     delivered: [],
     nextTaskNumber: 1,
+    archives: [],
   }
 }
 
@@ -165,6 +178,7 @@ const teamProjectionEntrySchema = z.object({
   messages: z.array(teamMessageSnapshotSchema),
   delivered: z.array(teamMessageIdSchema),
   nextTaskNumber: positiveSafeInteger,
+  archives: z.array(taskArchiveEntrySchema),
   failure: z.string().optional(),
 }).strict() as z.ZodType<TeamProjectionState>
 
@@ -218,6 +232,29 @@ function parseCurrentTeamEvent(event: TeamSessionEvent): TeamSessionEvent {
 
 function applyProjectionEvent(state: TeamProjectionState, event: SessionEvent): TeamProjectionState {
   if (state.failure !== undefined) return state
+  const record = pluginRecordOf(event)
+  if (record !== undefined) {
+    if (record.type !== TASK_ARCHIVE_RECORD) return state
+    const parsed = taskArchiveRecordSchema.safeParse(record.data)
+    // Unknown/invalid archive markers are ignored for forward compatibility; an
+    // older build must be able to ignore them without failing the Team projection.
+    if (!parsed.success) return state
+    const marker = parsed.data
+    if (marker.teamId !== state.id) return state
+    const task = state.tasks.find(candidate => candidate.id === marker.taskId)
+    // Known-v1 markers are applied only when they are semantically valid at this
+    // point in the fold: an existing completed task, the anchored durable
+    // revision, the next public revision, and the requested direction. Duplicate,
+    // pre-task, stale or out-of-order markers are ignored, so they can never
+    // silently move capacity on their own.
+    if (task === undefined || task.status !== 'completed' || task.revision !== marker.baseRevision) return state
+    const entry = taskArchiveIndex(state.archives).get(marker.taskId)
+    if (marker.publicRevision !== task.revision + (entry?.count ?? 0) + 1) return state
+    const archived = isTaskArchivedEntry(entry, task)
+    if (marker.action === 'archive' && archived) return state
+    if (marker.action === 'restore' && !archived) return state
+    return { ...state, archives: applyTaskArchiveRecord(state.archives, marker) }
+  }
   if (!isTeamEvent(event)) return state
   try {
     const selector = parsePersisted(event.type, teamEventSelectorSchema, event.data)
@@ -322,6 +359,8 @@ const teamTaskViewSchema = z.object({
   ownerName: z.string().optional(),
   ready: z.boolean(),
   writeScopeWarnings: z.array(z.string()),
+  archived: z.boolean(),
+  archivedAt: z.string().optional(),
 }).strict() as z.ZodType<TeamTaskView>
 
 const teamProjectionSchema = z.object({
@@ -331,7 +370,10 @@ const teamProjectionSchema = z.object({
 }).strict() as z.ZodType<TeamProjection>
 
 /** Client views keyed by the member and task collections they were derived from. */
-const teamProjectionViews = new WeakMap<readonly TeamMemberSnapshot[], WeakMap<readonly TeamTaskSnapshot[], TeamProjection>>()
+const teamProjectionViews = new WeakMap<
+  readonly TeamMemberSnapshot[],
+  WeakMap<readonly TeamTaskSnapshot[], WeakMap<readonly TaskArchiveEntry[], TeamProjection>>
+>()
 
 function buildTeamProjection(state: TeamProjectionState): TeamProjection {
   const rootId = brandString<SessionId>(state.id)
@@ -347,9 +389,13 @@ function buildTeamProjection(state: TeamProjectionState): TeamProjection {
   }
   return {
     members,
-    tasks: state.tasks
-      .filter(task => task.status !== 'deleted')
-      .map(task => projectTaskView(state, task)),
+    tasks: (() => {
+      const index = taskArchiveIndex(state.archives)
+      const context = taskViewContext(state)
+      return state.tasks
+        .filter(task => task.status !== 'deleted' && !isTaskArchivedEntry(index.get(task.id), task))
+        .map(task => projectTaskView(state, task, context))
+    })(),
     ...state.failure === undefined ? {} : { failure: state.failure },
   }
 }
@@ -369,10 +415,15 @@ export function teamProjectionView(state: TeamProjectionState): TeamProjection {
     byTasks = new WeakMap()
     teamProjectionViews.set(state.members, byTasks)
   }
-  let view = byTasks.get(state.tasks)
+  let byArchives = byTasks.get(state.tasks)
+  if (byArchives === undefined) {
+    byArchives = new WeakMap()
+    byTasks.set(state.tasks, byArchives)
+  }
+  let view = byArchives.get(state.archives)
   if (view === undefined) {
     view = buildTeamProjection(state)
-    byTasks.set(state.tasks, view)
+    byArchives.set(state.archives, view)
   }
   return view
 }
@@ -380,7 +431,7 @@ export function teamProjectionView(state: TeamProjectionState): TeamProjection {
 /** Team projection selected by the projected Session identity; the wire view carries durable roster and task state only. */
 export const teamProjectionDefinition = {
   key: 'agentTeam',
-  stateVersion: 4,
+  stateVersion: 5,
   stateSchema: teamProjectionEntrySchema,
   init: header => emptyTeamState(header.id),
   apply: applyProjectionEvent,

@@ -3,7 +3,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { TeamTaskId } from '@deepseek-ai/dsh-experimental-agent-team'
+import { FORK_TEAM_CAPABILITY, TeamTaskId } from '@deepseek-ai/dsh-experimental-agent-team'
 import type { TeamMemberView } from '@deepseek-ai/dsh-experimental-agent-team'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { InferValue, ValueSchemaSpec } from '@deepseek-ai/dsh-tools'
@@ -85,6 +85,8 @@ const TASK_VIEW_SCHEMA = {
     writeScopes: { type: 'array', required: true, items: { type: 'string' } },
     ready: { type: 'boolean', required: true },
     writeScopeWarnings: { type: 'array', required: true, items: { type: 'string' } },
+    archived: { type: 'boolean', required: true },
+    archivedAt: { type: 'string' },
   },
 } as const
 
@@ -321,7 +323,7 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
 
     register(scoped.tools.register(defineTool({
       name: 'team_task_list',
-      description: 'List shared tasks, including readiness, owner, revision, blockers, and write-scope warnings.',
+      description: 'List shared tasks, including readiness, owner, revision, blockers, and write-scope warnings. Archived completed tasks are hidden unless include_archived is true.',
       parameters: {
         status: {
           type: 'string',
@@ -330,13 +332,17 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
         },
         owner: { type: 'string', description: 'Optional member target from spawn_teammate or list_agents, matching ownerName; use unowned for tasks without an owner.' },
         ready: { type: 'boolean', description: 'Optional readiness filter.' },
+        include_archived: { type: 'boolean', description: 'Include explicitly archived completed tasks (Lead-only archive state); defaults to false.' },
         cursor: { type: 'integer', description: 'Zero-based result offset. Defaults to 0.' },
         limit: { type: 'integer', description: 'Number of rows, 1 through 100. Defaults to 50.' },
       },
       output: jsonOutput(TASK_LIST_VALUE_SCHEMA),
       execute(args, exec) {
         const status = args.status
-        const filtered = ctx.agentTeams.listTasks(callingAgent(exec.agent, 'team_task_list')).filter(task =>
+        const filtered = ctx.agentTeams.listTasks(
+          callingAgent(exec.agent, 'team_task_list'),
+          { includeArchived: args.include_archived === true },
+        ).filter(task =>
           (status === undefined || task.status === status)
           && (args.owner === undefined || (args.owner === 'unowned' ? task.ownerName === undefined : task.ownerName === args.owner))
           && (args.ready === undefined || task.ready === args.ready))
@@ -371,12 +377,12 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
       description: 'Compare-and-set a shared task action using the latest revision from team_task_get or team_task_list.',
       parameters: {
         task_id: { type: 'string', required: true, description: 'Shared task id.' },
-        expected_revision: { type: 'integer', required: true, description: 'Current task revision used as the CAS precondition.' },
+        expected_revision: { type: 'integer', required: true, description: 'Current monotonic public task revision used as the CAS precondition (includes archive/restore changes).' },
         action: {
           type: 'string',
           required: true,
-          enum: ['claim', 'release', 'edit', 'set_dependencies', 'complete', 'reopen', 'reassign', 'delete'],
-          description: 'Task transition to apply.',
+          enum: ['claim', 'release', 'edit', 'set_dependencies', 'complete', 'reopen', 'reassign', 'delete', 'archive', 'unarchive'],
+          description: 'Task transition to apply. archive/unarchive are Lead-only, apply only to completed tasks, and keep the same task id.',
         },
         subject: { type: 'string', description: 'Replacement title for edit.' },
         description: { type: 'string', description: 'Replacement details for edit.' },
@@ -409,6 +415,10 @@ To message another teammate, use send_message({ target: "<teammate name>", messa
 
 /** Install Team tools in every live or subsequently published Team member scope. */
 export function apply(ctx: Context, config: Config = {}): void {
+  const service = ctx.get('agentTeams')
+  if (service === undefined || service.teamForkCapability !== FORK_TEAM_CAPABILITY) {
+    throw new Error('tool-agent-team: non-fork agentTeams service is active; refusing to bind the fork Team tools. Stop the old Team row during an idle maintenance window.')
+  }
   const resolved: Required<Config> = {
     interrupt: config.interrupt ?? true,
     freshProvider: config.freshProvider ?? 'spawn',

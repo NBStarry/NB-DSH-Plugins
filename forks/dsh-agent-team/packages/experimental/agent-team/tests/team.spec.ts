@@ -8,7 +8,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { SessionLogOffset, SessionId, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { pluginRecordOf, SessionLogOffset, SessionId, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
 import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SubagentService from '@deepseek-ai/dsh-subagent'
 import { deliverSubagentPrompt, type HostPromptDeliverer } from '@deepseek-ai/dsh-subagent/internal'
@@ -19,6 +19,7 @@ import { mountWorkingDirectoryFixture } from '../../../subagent/subagent/tests/w
 import TeamService, { TeamError, TeamId, TeamMessageId, TeamTaskId } from '../src/index.ts'
 import { TeamRuntimeLifecycle } from '../src/lifecycle.ts'
 import { teamProjectionDefinition } from '../src/projection.ts'
+import { projectTaskView } from '../src/task-view.ts'
 import type { TeamMemberSnapshot, TeamMessageSnapshot, TeamTaskSnapshot } from '../src/index.ts'
 import { TestSessionQuery } from './test-session-query.ts'
 
@@ -1497,4 +1498,85 @@ describe('Team direct messages and waiting', () => {
       phase: 'failed', error: 'settled elsewhere',
     })
   })
+
+
+  it('replays a durable archive marker from the real JSONL log with the same task id', async () => {
+    const { ctx, lead } = await setup([])
+    const created = await ctx.agentTeams.createTask(lead, { subject: 'durable archive', description: 'durable archive' })
+    const claimed = await ctx.agentTeams.updateTask(lead, {
+      taskId: created.id, expectedRevision: created.revision, action: 'claim',
+    })
+    const completed = await ctx.agentTeams.updateTask(lead, {
+      taskId: created.id, expectedRevision: claimed.revision, action: 'complete',
+    })
+    const archived = await ctx.agentTeams.updateTask(lead, {
+      taskId: created.id, expectedRevision: completed.revision, action: 'archive',
+    })
+    const events = await storedEvents(ctx, lead.session.id)
+    expect(events.some(event => pluginRecordOf(event)?.type === 'plugin:agent-team/task-archive')).toBe(true)
+    let replayed = teamProjectionDefinition.init(lead.session.header)
+    for (const event of events) replayed = teamProjectionDefinition.apply(replayed, event)
+    expect(replayed.archives).toHaveLength(1)
+    expect(replayed.tasks[0]?.revision).toBe(completed.revision)
+    expect(projectTaskView(replayed, replayed.tasks[0]!)).toMatchObject({
+      id: created.id, archived: true, revision: archived.revision,
+    })
+    expect(ctx.agentTeams.listTasks(lead)).toEqual([])
+    expect(ctx.agentTeams.listTasks(lead, { includeArchived: true })).toHaveLength(1)
+  })
+
+  it('explicitly archives and restores completed tasks with a monotonic public revision', async () => {
+    const { ctx, lead } = await setup([])
+    const created = await ctx.agentTeams.createTask(lead, { subject: 'archive me', description: 'archive me' })
+    const claimed = await ctx.agentTeams.updateTask(lead, {
+      taskId: created.id, expectedRevision: created.revision, action: 'claim',
+    })
+    const done = await ctx.agentTeams.updateTask(lead, {
+      taskId: created.id, expectedRevision: claimed.revision, action: 'complete',
+    })
+    const archived = await ctx.agentTeams.updateTask(lead, {
+      taskId: created.id, expectedRevision: done.revision, action: 'archive',
+    })
+    expect(archived).toMatchObject({
+      status: 'completed', archived: true, revision: done.revision + 1,
+    })
+    expect(archived.archivedAt).toMatch(/\d{4}-\d{2}-\d{2}T/)
+    expect(ctx.agentTeams.listTasks(lead)).toEqual([])
+    expect(ctx.agentTeams.listTasks(lead, { includeArchived: true })).toHaveLength(1)
+    await expect(ctx.agentTeams.updateTask(lead, {
+      taskId: created.id, expectedRevision: archived.revision, action: 'edit', subject: 'stolen',
+    })).rejects.toMatchObject({ code: 'TEAM_TASK_ARCHIVED' })
+    const restored = await ctx.agentTeams.updateTask(lead, {
+      taskId: created.id, expectedRevision: archived.revision, action: 'unarchive',
+    })
+    expect(restored).toMatchObject({ archived: false, revision: archived.revision + 1 })
+    await expect(ctx.agentTeams.updateTask(lead, {
+      taskId: created.id, expectedRevision: archived.revision, action: 'archive',
+    })).rejects.toMatchObject({ code: 'TEAM_TASK_STALE_REVISION' })
+    // The durable team/task revision never advanced for archive/restore.
+    expect(durable(lead).tasks[0]?.revision).toBe(done.revision)
+  })
+
+  it('releases and restores capacity only through explicit archive state', async () => {
+    const { ctx, lead } = await setup([], { maxTasks: 1 })
+    const first = await ctx.agentTeams.createTask(lead, { subject: 'first', description: 'first' })
+    const claimed = await ctx.agentTeams.updateTask(lead, {
+      taskId: first.id, expectedRevision: first.revision, action: 'claim',
+    })
+    const done = await ctx.agentTeams.updateTask(lead, {
+      taskId: first.id, expectedRevision: claimed.revision, action: 'complete',
+    })
+    // Completed but unarchived still consumes the single slot.
+    await expect(ctx.agentTeams.createTask(lead, { subject: 'overflow', description: 'overflow' }))
+      .rejects.toMatchObject({ code: 'TEAM_TASK_LIMIT' })
+    const archived = await ctx.agentTeams.updateTask(lead, {
+      taskId: first.id, expectedRevision: done.revision, action: 'archive',
+    })
+    const second = await ctx.agentTeams.createTask(lead, { subject: 'second', description: 'second' })
+    expect(second.revision).toBe(1)
+    await expect(ctx.agentTeams.updateTask(lead, {
+      taskId: first.id, expectedRevision: archived.revision, action: 'unarchive',
+    })).rejects.toMatchObject({ code: 'TEAM_TASK_LIMIT' })
+  })
+
 })

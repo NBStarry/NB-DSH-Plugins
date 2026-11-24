@@ -1,10 +1,15 @@
 /** Agent Teams Web dictionaries. */
+import { managementEn, managementZh, type ManagementKey } from './management.js'
+function managementDictionary(source: Record<ManagementKey, string>): Record<`manage.${ManagementKey}`, string> {
+  return Object.fromEntries(Object.entries(source).map(([key, text]) => [`manage.${key}`, text])) as Record<`manage.${ManagementKey}`, string>
+}
 
 /** Locale namespace owned by the Agent Teams Web UI. */
 export const NS = 'agent-team'
 
 /** Simplified Chinese dictionary and key source. */
 export const zh = {
+  ...managementDictionary(managementZh),
   trigger: '智能体团队',
   loading: '正在加载团队…',
   unavailable: 'Team 暂不可用',
@@ -37,6 +42,7 @@ export type TeamKey = keyof typeof zh
 
 /** English dictionary checked against the Chinese key set. */
 export const en = {
+  ...managementDictionary(managementEn),
   trigger: 'Agent team',
   loading: 'Loading team…',
   unavailable: 'Team is unavailable',
@@ -66,6 +72,7 @@ export const en = {
 
 /** Japanese copy, checked against the English keys. */
 export const ja = {
+  ...managementDictionary(managementEn),
   'trigger': 'エージェントチーム',
   'loading': 'チームを読み込み中…',
   'unavailable': 'チームは利用できません',
@@ -95,6 +102,7 @@ export const ja = {
 
 /** Spanish dictionary, checked against the English keys. */
 export const es = {
+  ...managementDictionary(managementEn),
   trigger: 'equipo de agentes',
   loading: 'Cargando equipo…',
   unavailable: 'El equipo no está disponible',
@@ -124,6 +132,7 @@ export const es = {
 
 /** French dictionary, checked against the English keys. */
 export const fr = {
+  ...managementDictionary(managementEn),
   trigger: "Équipe d'agents",
   loading: "Chargement de l'équipe…",
   unavailable: "L'équipe n'est pas disponible",
@@ -153,6 +162,7 @@ export const fr = {
 
 /** German dictionary, checked against the English keys. */
 export const de = {
+  ...managementDictionary(managementEn),
   trigger: 'Agententeam',
   loading: 'Team wird geladen…',
   unavailable: 'Team ist nicht verfügbar',
@@ -182,6 +192,7 @@ export const de = {
 
 /** Russian dictionary, checked against the English keys. */
 export const ru = {
+  ...managementDictionary(managementEn),
   trigger: 'Команда агентов',
   loading: 'Загрузка команды…',
   unavailable: 'Команда недоступна',
@@ -211,6 +222,7 @@ export const ru = {
 
 /** Portuguese dictionary, checked against the English keys. */
 export const pt = {
+  ...managementDictionary(managementEn),
   trigger: 'Equipe de agentes',
   loading: 'Carregando equipe…',
   unavailable: 'A equipe não está disponível',

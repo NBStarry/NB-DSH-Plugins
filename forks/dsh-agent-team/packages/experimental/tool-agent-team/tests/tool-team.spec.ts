@@ -210,6 +210,33 @@ describe('dsh-tool-team', () => {
     await waitNoAgent(ctx, childId)
   })
 
+
+  it('exposes archive and unarchive through team_task_update and include_archived list', async () => {
+    const { ctx, lead } = await setup([])
+    const created = JSON.parse(text(await execute(ctx, lead, 'team_task_create', {
+      subject: 'archive through tools', description: 'archive through tools',
+    }))) as { id: string; revision: number }
+    const claimed = JSON.parse(text(await execute(ctx, lead, 'team_task_update', {
+      task_id: created.id, expected_revision: created.revision, action: 'claim',
+    }))) as { revision: number }
+    const completed = JSON.parse(text(await execute(ctx, lead, 'team_task_update', {
+      task_id: created.id, expected_revision: claimed.revision, action: 'complete',
+    }))) as { revision: number }
+    const archived = JSON.parse(text(await execute(ctx, lead, 'team_task_update', {
+      task_id: created.id, expected_revision: completed.revision, action: 'archive',
+    }))) as { revision: number; archived: boolean }
+    expect(archived).toMatchObject({ archived: true, revision: completed.revision + 1 })
+    expect(JSON.parse(text(await execute(ctx, lead, 'team_task_list', {}))).tasks).toEqual([])
+    const withArchived = JSON.parse(text(await execute(ctx, lead, 'team_task_list', { include_archived: true })))
+    expect(withArchived.tasks).toMatchObject([{ id: created.id, archived: true }])
+    expect(JSON.parse(text(await execute(ctx, lead, 'team_task_get', { task_id: created.id }))))
+      .toMatchObject({ archived: true, revision: archived.revision })
+    const restored = JSON.parse(text(await execute(ctx, lead, 'team_task_update', {
+      task_id: created.id, expected_revision: archived.revision, action: 'unarchive',
+    }))) as { revision: number; archived: boolean }
+    expect(restored).toMatchObject({ archived: false, revision: archived.revision + 1 })
+  })
+
   it('uses returned targets for messages, interruption, and task assignment', async () => {
     const { ctx, lead } = await setup(['hang', 'hang'])
     const spawned = await execute(ctx, lead, 'spawn_teammate', {

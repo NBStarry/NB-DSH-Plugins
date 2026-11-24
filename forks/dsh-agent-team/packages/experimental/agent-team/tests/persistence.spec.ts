@@ -353,5 +353,54 @@ for (const backend of backends) {
       await rootHandle.dispose()
       await second.dispose()
     })
+
+    it('keeps explicit archive state across a cold Lead resume', {
+      timeout: PERSISTENCE_TEST_TIMEOUT_MS,
+    }, async () => {
+      const storageRoot = mkdtempSync(join(tmpdir(), `dsh-team-${backend.name.toLowerCase()}-archive-`))
+      roots.push(storageRoot)
+      const first = await stack(backend, storageRoot, [])
+      const rootId = SessionId(`${backend.name.toLowerCase()}-archive-root`)
+      const lead = await first.ctx.agentLoop.create(rootId, { provider: 'mock', model: 'mock' })
+      const created = await first.ctx.agentTeams.createTask(lead, { subject: 'cold archive', description: 'cold archive' })
+      const claimed = await first.ctx.agentTeams.updateTask(lead, {
+        taskId: created.id, expectedRevision: created.revision, action: 'claim',
+      })
+      const completed = await first.ctx.agentTeams.updateTask(lead, {
+        taskId: created.id, expectedRevision: claimed.revision, action: 'complete',
+      })
+      const dependent = await first.ctx.agentTeams.createTask(lead, {
+        subject: 'depends on archived', description: 'dependent', blockedBy: [created.id],
+      })
+      const archived = await first.ctx.agentTeams.updateTask(lead, {
+        taskId: created.id, expectedRevision: completed.revision, action: 'archive',
+      })
+      expect(archived).toMatchObject({ archived: true, revision: completed.revision + 1 })
+      const rawRevision = durable(lead).tasks.find(task => task.id === created.id)?.revision
+      await first.dispose()
+
+      const second = await stack(backend, storageRoot, [])
+      const handle = await second.ctx.agents.resume({
+        resumeSessionId: rootId, agentOptions: { provider: 'mock', model: 'mock' },
+      })
+      await vi.waitFor(() => {
+        expect(second.ctx.agentTeams.getTask(handle.agent, created.id)).toMatchObject({
+          archived: true, revision: archived.revision,
+        })
+      }, { timeout: 5_000 })
+      const cold = second.ctx.agentTeams.getTask(handle.agent, created.id)
+      expect(cold).toMatchObject({ archived: true, status: 'completed', revision: archived.revision })
+      expect(second.ctx.agentTeams.listTasks(handle.agent).map(task => task.id)).toEqual([dependent.id])
+      expect(second.ctx.agentTeams.listTasks(handle.agent, { archivedOnly: true, limit: 1 }))
+        .toMatchObject([{ id: created.id, archived: true }])
+      expect(second.ctx.agentTeams.getTask(handle.agent, dependent.id).ready).toBe(true)
+      const restored = await second.ctx.agentTeams.updateTask(handle.agent, {
+        taskId: created.id, expectedRevision: cold.revision, action: 'unarchive',
+      })
+      expect(restored).toMatchObject({ archived: false, revision: cold.revision + 1 })
+      expect(durable(handle.agent).tasks.find(task => task.id === created.id)?.revision).toBe(rawRevision)
+      await handle.dispose()
+      await second.dispose()
+    })
   })
 }

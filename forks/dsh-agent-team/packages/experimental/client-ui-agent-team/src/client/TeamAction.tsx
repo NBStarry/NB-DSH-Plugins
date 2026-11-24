@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type {} from '@deepseek-ai/dsh-agent/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -17,11 +17,14 @@ import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { NS, type TeamKey } from './locales.ts'
 import css from './TeamAction.module.css'
+import { TeamSettings } from './management.js'
 
 /** Business actions injected by the browser plugin. */
 export interface TeamActionInjected {
   /** Open a roster Session from the current conversation. */
   openTeammate: (sessionId: SessionId, childSessionId: SessionId) => void
+  /** User actions remain scoped to the displayed conversation and Host permissions. */
+  executeManagement?: (sessionId: SessionId, name: string, args: Record<string, unknown>, signal: AbortSignal) => Promise<unknown>
 }
 
 /** Durable lifecycle overlaid with the member Session's live turn activity. */
@@ -176,11 +179,12 @@ function TaskCard({ task, t }: { task: TeamTask; t: TranslateNS<typeof NS> }) {
   )
 }
 
-/** Render the Team roster and read-only task board. */
+/** Render the original Team roster/task board with its scoped management entry. */
 export function TeamAction({
-  sessionId, useSession, useSessions, useSessionStatus, openTeammate, t,
+  sessionId, useSession, useSessions, useSessionStatus, useAccess, openTeammate, executeManagement, t,
 }: TeamActionProps) {
   const [open, setOpen] = useState(false)
+  const [managementOpen, setManagementOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -210,6 +214,12 @@ export function TeamAction({
   }, [sessionId])
 
   useEffect(() => cancelHoverChange, [])
+  const managementChanged = useCallback((next: boolean): void => {
+    clearTimeout(hoverTimer.current)
+    hoverTimer.current = undefined
+    if (next) pinnedRef.current = true
+    setManagementOpen(next)
+  }, [])
 
   useLayoutEffect(() => {
     if (open && positioned && pinnedRef.current) panelRef.current?.focus()
@@ -238,17 +248,17 @@ export function TeamAction({
 
   const scheduleHoverClose = (): void => {
     cancelHoverChange()
-    if (pinnedRef.current) return
+    if (pinnedRef.current || managementOpen) return
     hoverTimer.current = setTimeout(() => {
       hoverTimer.current = undefined
       changeOpen(false)
     }, 120)
   }
 
-  useDismissOnOutsidePointer(rootRef, open, changeOpen, panelRef)
+  useDismissOnOutsidePointer(rootRef, open && !managementOpen, changeOpen, panelRef)
 
   useEffect(() => {
-    if (!open) return
+    if (!open || managementOpen) return
     const dismiss = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return
       event.preventDefault()
@@ -259,7 +269,7 @@ export function TeamAction({
     }
     document.addEventListener('keydown', dismiss)
     return () => { document.removeEventListener('keydown', dismiss) }
-  }, [open])
+  }, [open, managementOpen])
 
   const compact = team !== undefined && team.members.length === 1 && team.tasks.length === 0
 
@@ -301,6 +311,18 @@ export function TeamAction({
           onMouseLeave={scheduleHoverClose}
         >
           <div className={css.body}>
+            {executeManagement !== undefined && (
+              <TeamSettings
+                sessionId={sessionId}
+                execute={(args, signal) => executeManagement(sessionId, 'team-roles', args, signal)}
+                executeCapacity={(args, signal) => executeManagement(sessionId, 'team-capacity', args, signal)}
+                executeTasks={(args, signal) => executeManagement(sessionId, 'team-manage-tasks', args, signal)}
+                executeModel={(args, signal) => executeManagement(sessionId, 'team-model', args, signal)}
+                t={key => t(`manage.${key}`)}
+                useAccess={useAccess}
+                onOpenChange={managementChanged}
+              />
+            )}
             {error !== null && (
               <div className={css.error} role="alert"><StateDot state="error" />{error}</div>
             )}

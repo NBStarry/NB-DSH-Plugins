@@ -46,6 +46,7 @@ function pending(state: TeamState): TeamMessageSnapshot[] {
 function isEmptyState(state: TeamState): boolean {
   return state.members.length === 0 && state.tasks.length === 0
     && state.messages.length === 0 && state.delivered.length === 0
+    && state.archives.length === 0
 }
 
 function member(overrides: Partial<TeamMemberSnapshot> = {}): TeamMemberSnapshot {
@@ -476,6 +477,33 @@ describe('Agent Teams projection events', () => {
       expect(teamProjectionDefinition.apply(failed, queuedEvent)).toBe(failed)
     })
 
+    it('folds ignorable archive side markers without changing durable task events', () => {
+      const activeMember = event('team/member', { version: 2, teamId: TEAM, member: member({ phase: 'active' }) }, SessionSeq(1))
+      const completed = event('team/task', {
+        version: 2, teamId: TEAM, task: task({ revision: 2, status: 'completed' }),
+      }, SessionSeq(2))
+      const archive = {
+        type: 'plugin:agent-team/task-archive',
+        data: {
+          v: 1, action: 'archive', teamId: TEAM, taskId: 'task-1',
+          baseRevision: 2, publicRevision: 3, at: '2026-11-24T00:00:00.000Z',
+        },
+        seq: SessionSeq(3), time: 0, ignorable: true,
+      } as unknown as SessionEvent
+      const state = project(ROOT, [memberEvent, activeMember, taskEvent, completed, archive])
+      expect(state.archives).toHaveLength(1)
+      expect(teamProjectionView(state).tasks).toEqual([])
+      // A duplicate/premature archive marker is ignored, so it cannot move capacity.
+      const withArchived = teamProjectionDefinition.apply(state, {
+        ...archive, seq: SessionSeq(5), data: { ...archive.data, publicRevision: 4, at: '2026-11-24T00:01:00.000Z' },
+      } as unknown as SessionEvent)
+      expect(withArchived).toBe(state)
+      // Invalid payloads are ignored rather than failing the projection, because
+      // older/foreign builds may retain unknown ignorable records.
+      const invalid = teamProjectionDefinition.apply(state, { ...archive, seq: SessionSeq(6), data: { v: 2 } } as unknown as SessionEvent)
+      expect(invalid).toBe(state)
+    })
+
     it('views durable roster and non-deleted derived tasks and reuses the view across mailbox-only changes', () => {
       const activeMember = event('team/member', { version: 2, teamId: TEAM, member: member({ phase: 'active' }) }, SessionSeq(1))
       const claimed = event('team/task', {
@@ -502,10 +530,12 @@ describe('Agent Teams projection events', () => {
           {
             id: 'task-1', revision: 2, subject: 'subject', description: 'description', status: 'in_progress',
             blockedBy: [], writeScopes: ['src'], ownerName: 'worker-a', ready: false, writeScopeWarnings: [],
+            archived: false,
           },
           {
             id: 'task-2', revision: 1, subject: 'subject', description: 'description', status: 'pending',
             blockedBy: ['task-1'], writeScopes: ['src/web'], ready: false, writeScopeWarnings: ['write scopes overlap with task-1'],
+            archived: false,
           },
         ],
       })

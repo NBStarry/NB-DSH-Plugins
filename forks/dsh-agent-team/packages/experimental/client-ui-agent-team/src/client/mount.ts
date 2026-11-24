@@ -7,6 +7,9 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
+import type {} from '@deepseek-ai/dsh-api-remotes/client'
+import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
+import { PolicyConfig } from './management.js'
 import { TeamAction, type TeamActionInjected } from './TeamAction.tsx'
 import { en, ja, es, fr, de, ru, pt, NS, zh, type TeamKey } from './locales.ts'
 
@@ -18,7 +21,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 }
 
 /** Required browser services for navigation, slots, and localized copy. */
-export const inject = ['sessions', 'uiWorkspace', 'slots', 'locale']
+export const inject = ['sessions', 'uiWorkspace', 'slots', 'locale', 'remote', 'remote.commands']
 
 /**
  * Register the Team locale dictionaries and the conversation-header action.
@@ -34,7 +37,18 @@ export function registerAgentTeamUi(ctx: ClientContext): void {
     return address?.parentSessionId ?? sessionId
   }
 
+  ctx.slots.inject('plugins.row.config', () => ctx.slots.register({
+    name: 'plugins.row.config', key: '@local/dsh-agent-team-fork#fork-management', locale: NS,
+  }, props => PolicyConfig({ ...props, t: key => props.t(`manage.${key}`) })))
+
   const actions: TeamActionInjected = {
+    async executeManagement(sessionId, name, args, signal) {
+      const response = await ctx.remote.commands.execute(sessionId, '/' + name + ' ' + JSON.stringify(args), [], signal)
+      if (!response.ok) throw new Error(response.error.message)
+      const result = response.value?.result
+      if (!result || result.kind !== 'success' || typeof result.text !== 'string') throw new Error(result?.text ?? 'Team command unavailable')
+      return JSON.parse(result.text)
+    },
     openTeammate(sessionId: SessionId, childSessionId: SessionId): void {
       const parentSessionId = leadSessionId(sessionId)
       if ((sessions.retainInfo(sessionId).getSnapshot().retainedBy.mainView ?? 0) === 0) return

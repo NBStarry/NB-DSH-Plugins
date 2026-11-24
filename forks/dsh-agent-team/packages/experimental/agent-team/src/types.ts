@@ -86,6 +86,7 @@ export interface TeamTaskSnapshot {
 /** Runtime-enriched task view returned to tools and hosts. */
 export interface TeamTaskView {
   readonly id: TeamTaskId
+  /** Monotonic public revision: durable revision plus archive/restore marker count. */
   readonly revision: number
   readonly subject: string
   readonly description: string
@@ -95,6 +96,10 @@ export interface TeamTaskView {
   readonly ownerName?: string
   readonly ready: boolean
   readonly writeScopeWarnings: string[]
+  /** Whether this completed task is explicitly archived (excluded from capacity and default lists). */
+  readonly archived: boolean
+  /** ISO timestamp of the effective archive marker, when archived. */
+  readonly archivedAt?: string
 }
 
 /** One durable roster row published through the `agentTeam` Session projection. */
@@ -153,7 +158,7 @@ declare module '@deepseek-ai/dsh-llm' {
 export interface Config {
   /** Maximum immutable teammate names retained by one Team. */
   readonly maxMembers?: number
-  /** Maximum non-deleted tasks retained by one Team. */
+  /** Maximum non-deleted, non-archived tasks retained by one Team. */
   readonly maxTasks?: number
   /** Maximum UTF-8 bytes in one complete sender-framed delivery. */
   readonly maxMessageBytes?: number
@@ -206,6 +211,8 @@ export type TeamTaskAction =
   | 'reopen'
   | 'reassign'
   | 'delete'
+  | 'archive'
+  | 'unarchive'
 
 /** Compare-and-set mutation of one shared task. */
 export interface UpdateTeamTaskRequest {

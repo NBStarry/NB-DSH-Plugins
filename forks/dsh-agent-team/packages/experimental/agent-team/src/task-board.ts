@@ -15,7 +15,14 @@ import type {
   TeamTaskView,
   UpdateTeamTaskRequest,
 } from './types.ts'
-import { projectTaskView, taskReady } from './task-view.ts'
+import { projectTaskView, taskReady, taskViewContext } from './task-view.ts'
+import {
+  isTaskArchivedEntry,
+  publicTaskRevisionEntry,
+  taskArchiveIndex,
+  taskArchiveRecord,
+} from './task-archive.ts'
+import type { TaskArchiveEntry } from './task-archive.ts'
 import { requiredText, writeScope } from './validation.ts'
 
 const TASK_GRAPH_ERROR_CODES: Record<TeamTaskGraphViolation, string> = {
@@ -28,12 +35,19 @@ const TASK_GRAPH_ERROR_CODES: Record<TeamTaskGraphViolation, string> = {
 export class TeamTaskBoard {
   /**
    * @param journal - authoritative Lead-log transaction owner.
-   * @param maxTasks - maximum non-deleted tasks retained by one Team.
+   * @param maxTasks - maximum non-deleted, non-archived tasks retained by one Team.
    */
   constructor(
     private readonly journal: TeamJournal,
     private readonly maxTasks: number,
   ) {}
+
+  /** Count non-deleted, non-archived tasks, optionally reusing one archive index. */
+  private activeCount(state: TeamState, index?: ReadonlyMap<TeamTaskId, TaskArchiveEntry>): number {
+    const archives = index ?? taskArchiveIndex(state.archives)
+    return state.tasks.filter(task =>
+      task.status !== 'deleted' && !isTaskArchivedEntry(archives.get(task.id), task)).length
+  }
 
   /**
    * Create one unowned pending task in the Team Lead log.
@@ -45,7 +59,7 @@ export class TeamTaskBoard {
     const { root } = membership
     return this.journal.transact(root.id, async () => {
       const state = this.journal.state(root)
-      const active = state.tasks.filter(task => task.status !== 'deleted').length
+      const active = this.activeCount(state)
       if (active >= this.maxTasks) {
         throw new TeamError(`Team task limit ${this.maxTasks} reached`, 'TEAM_TASK_LIMIT')
       }
@@ -87,12 +101,37 @@ export class TeamTaskBoard {
    * @param membership - exact caller membership resolved by the Team roster.
    * @returns detached current task views.
    */
-  list(membership: TeamMembership): TeamTaskView[] {
+  list(
+    membership: TeamMembership,
+    options: {
+      readonly includeArchived?: boolean
+      readonly archivedOnly?: boolean
+      readonly offset?: number
+      readonly limit?: number
+    } = {},
+  ): TeamTaskView[] {
     const { root } = membership
     const state = this.journal.state(root)
-    return state.tasks
-      .filter(task => task.status !== 'deleted')
-      .map(task => projectTaskView(state, task))
+    const includeArchived = options.includeArchived === true
+    const archivedOnly = options.archivedOnly === true
+    const offset = options.offset ?? 0
+    const limit = options.limit
+    if (!Number.isSafeInteger(offset) || offset < 0) {
+      throw new TeamError('task list offset must be a non-negative safe integer', 'TEAM_INVALID_ARGUMENT')
+    }
+    if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1 || limit > 200)) {
+      throw new TeamError('task list limit must be an integer from 1 through 200', 'TEAM_INVALID_ARGUMENT')
+    }
+    const index = taskArchiveIndex(state.archives)
+    const visible = state.tasks.filter((task) => {
+      if (task.status === 'deleted') return false
+      const archived = isTaskArchivedEntry(index.get(task.id), task)
+      return archivedOnly ? archived : includeArchived || !archived
+    })
+    const page = limit === undefined ? visible.slice(offset) : visible.slice(offset, offset + limit)
+    // Project only the requested page, once, with one in-progress scan.
+    const context = taskViewContext(state)
+    return page.map(task => projectTaskView(state, task, context))
   }
 
   /**
@@ -112,15 +151,60 @@ export class TeamTaskBoard {
       const state = this.journal.state(root)
       const current = state.tasks.find(task => task.id === request.taskId)
       if (current === undefined) throw new TeamError(`team task "${request.taskId}" not found`, 'TEAM_TASK_NOT_FOUND')
-      if (current.revision !== request.expectedRevision) {
+      const archives = taskArchiveIndex(state.archives)
+      const publicRevision = publicTaskRevisionEntry(current, archives.get(current.id))
+      if (publicRevision !== request.expectedRevision) {
         throw new TeamError(
-          `stale team task "${current.id}" revision ${request.expectedRevision}; current revision is ${current.revision}`,
+          `stale team task "${current.id}" revision ${request.expectedRevision}; current revision is ${publicRevision}`,
           'TEAM_TASK_STALE_REVISION',
         )
       }
       if (current.status === 'deleted') throw new TeamError(`team task "${current.id}" is deleted`, 'TEAM_TASK_DELETED')
       const lead = membership.role === 'lead'
       const owner = current.ownerId === caller.id
+      const archived = isTaskArchivedEntry(archives.get(current.id), current)
+      if (request.action === 'archive' || request.action === 'unarchive') {
+        if (!lead) throw new TeamError('only the Team Lead can archive or restore tasks', 'TEAM_LEAD_REQUIRED')
+        if (request.action === 'archive') {
+          if (archived) throw new TeamError(`team task "${current.id}" is already archived`, 'TEAM_TASK_ALREADY_ARCHIVED')
+          if (current.status !== 'completed') {
+            throw new TeamError('only a completed task can be archived', 'TEAM_TASK_NOT_COMPLETED')
+          }
+        } else {
+          if (!archived) throw new TeamError(`team task "${current.id}" is not archived`, 'TEAM_TASK_NOT_ARCHIVED')
+          const active = this.activeCount(state, archives)
+          if (active >= this.maxTasks) {
+            throw new TeamError(`Team task limit ${this.maxTasks} reached`, 'TEAM_TASK_LIMIT')
+          }
+        }
+        const record = taskArchiveRecord(
+          request.action === 'archive' ? 'archive' : 'restore',
+          TeamId(root.id),
+          current,
+          state.archives,
+        )
+        let durable: boolean
+        try {
+          durable = await this.journal.appendTaskArchiveAndFlush(root, record)
+        } catch (error: unknown) {
+          throw new TeamError(
+            'archive outcome is unconfirmed; the marker may have been appended; refresh before retrying',
+            'TEAM_TASK_ARCHIVE_DURABILITY_UNKNOWN',
+            { cause: error },
+          )
+        }
+        if (durable !== true) {
+          // The marker is in memory but not durably confirmed. Never report success
+          // or let the caller blindly retry: its public expectedRevision is stale now.
+          throw new TeamError(
+            'task archive marker was appended but durability was not confirmed; refresh before retrying',
+            'TEAM_TASK_ARCHIVE_DURABILITY_UNKNOWN',
+          )
+        }
+        const nextState = this.journal.state(root)
+        return projectTaskView(nextState, current, taskViewContext(nextState))
+      }
+      if (archived) throw new TeamError(`team task "${current.id}" is archived`, 'TEAM_TASK_ARCHIVED')
       const authorizeOwner = (): void => {
         if (!lead && !owner) throw new TeamError('task mutation requires its owner or Team Lead', 'TEAM_TASK_UNAUTHORIZED')
       }
@@ -164,11 +248,14 @@ export class TeamTaskBoard {
           if (current.status !== 'in_progress') throw new TeamError('only an in-progress task can complete', 'TEAM_TASK_INVALID_TRANSITION')
           next = { ...current, status: 'completed' }
           break
-        case 'reopen':
+        case 'reopen': {
           authorizeOwner()
           if (current.status !== 'completed') throw new TeamError('only a completed task can reopen', 'TEAM_TASK_INVALID_TRANSITION')
+          // Completed tasks already occupy one maxTasks slot, so reopening is a
+          // zero-increment transition and must not require a second slot.
           next = this.withoutOwner({ ...current, status: 'pending' })
           break
+        }
         case 'reassign': {
           if (!lead) throw new TeamError('only the Team Lead can reassign tasks', 'TEAM_LEAD_REQUIRED')
           if (current.status !== 'pending' && current.status !== 'in_progress') {
@@ -206,7 +293,7 @@ export class TeamTaskBoard {
       }
       this.assertTaskGraph(state, task)
       await this.journal.appendAndFlush(root, 'team/task', { version: 2, teamId: TeamId(root.id), task })
-      return projectTaskView(state, task)
+      return projectTaskView(state, task, { archives, inProgress: state.tasks.filter(candidate => candidate.status === 'in_progress') })
     })
   }
 

@@ -2,9 +2,12 @@
 
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
+import { appendPluginRecord } from '@deepseek-ai/dsh-session'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionEventMap, SessionId } from '@deepseek-ai/dsh-session'
 import type { TeamEventType, TeamProjectionState, TeamState } from './projection.ts'
+import { TASK_ARCHIVE_RECORD } from './task-archive.ts'
+import type { TaskArchiveRecord } from './task-archive.ts'
 
 type AppendTeamEvent = <T extends TeamEventType>(type: T, data: SessionEventMap[T]) => void
 type MutableTeamEventType = 'team/member' | 'team/task'
@@ -52,6 +55,19 @@ export class TeamJournal {
     } finally {
       if (this.tails.get(rootId) === tail) this.tails.delete(rootId)
     }
+  }
+
+  /**
+   * Append one ignorable task archive marker and checkpoint the Lead Session.
+   * The marker never updates a `team/task` snapshot; older builds simply ignore it.
+   * @param root - exact live Lead whose Session owns the marker.
+   * @param record - validated archive/restore payload.
+   */
+  async appendTaskArchiveAndFlush(root: Agent, record: TaskArchiveRecord): Promise<boolean> {
+    appendPluginRecord(root.session, TASK_ARCHIVE_RECORD, record)
+    const durable = await this.ctx.sessions.flush(root.session)
+    this.onCommit(root)
+    return durable
   }
 
   /**

@@ -1,0 +1,44 @@
+# Agent Teams fork profile layer, derived from the upstream
+# @deepseek-ai/dsh-experimental-agent-team-profile patch at f3803c9.
+# Keep the upstream post-dsh-base replacements: the Team tools replace direct
+# delegation inside this profile; this bundle does not take over generic
+# sub-agent dispatch outside it.
+- id: tool-subagent-control
+  disabled: true
+
+- id: tool-subagent
+  disabled: true
+
+- id: tool-subagent-fork
+  disabled: true
+
+# Do NOT disable the official `agent-team`/`tool-agent-team`/`ui-agent-team`
+# rows here. Disabling an active upstream row disposes its runtime and actively
+# stops live child agents; the migration must explicitly stop the old bundle in
+# an idle window instead. Keep only the upstream profile replacements for
+# generic delegation above.
+
+- insert:
+    # The only exact package-root row: it owns the unique `agentTeams` service
+    # and is the only row the Web client module registry may discover.
+    - id: fork-runtime
+      name: '@local/dsh-agent-team-fork'
+      config:
+        maxMembers: 8
+        maxTasks: 256
+        maxMessageBytes: 65536
+        disposalTimeoutMs: 5000
+
+    # Host-only components. Their bare sub-path specifiers are not package
+    # roots, so the client module registry ignores them by construction.
+    - id: fork-tools
+      name: '@local/dsh-agent-team-fork/tools'
+      config:
+        freshProvider: spawn
+        forkProvider: fork
+
+    - id: fork-management
+      name: '@local/dsh-agent-team-fork/management'
+
+    - id: fork-capacity
+      name: '@local/dsh-agent-team-fork/capacity'

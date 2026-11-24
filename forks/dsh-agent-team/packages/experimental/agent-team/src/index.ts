@@ -32,6 +32,8 @@ export type * from './types.ts'
 export type { TeamMembership } from './roster.ts'
 export { TeamId, TeamMessageId, TeamTaskId } from './types.ts'
 export { TeamError } from './error.ts'
+export { FORK_TEAM_CAPABILITY } from './fork-capability.ts'
+import { FORK_TEAM_CAPABILITY } from './fork-capability.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -54,6 +56,8 @@ function positiveLimit(name: string, value: number): number {
 
 /** Agent Teams service backed by the exact live Lead Session log. */
 export class TeamService extends Service {
+  /** Non-spoofable capability marker used by fork tools/management rows. */
+  readonly teamForkCapability = FORK_TEAM_CAPABILITY;
   static inject = ['agents', 'sessions', 'sessionPersistence', 'sessionProjections', 'subagents']
 
   static Config: z<Config> = z.object({
@@ -167,12 +171,27 @@ export class TeamService extends Service {
   }
 
   /**
+   * Capability marker for explicit completed-task archive/restore support.
+   * Older hosts do not expose this property or the corresponding actions.
+   */
+  readonly taskArchiveVersion = 1
+
+  /**
    * List current non-deleted tasks in numeric creation order.
+   * Archived tasks are omitted unless `includeArchived` is true; `archivedOnly`
+   * selects just the archived section for management pages. `offset`/`limit`
+   * page the already-filtered rows and project only that page.
    * @param caller - exact live Team member reading the board.
+   * @param options - archive selection and bounded page window.
    * @returns detached current task views.
    */
-  listTasks(caller: Agent): TeamTaskView[] {
-    return this.tasks.list(this.roster.membership(caller))
+  listTasks(caller: Agent, options: {
+    readonly includeArchived?: boolean
+    readonly archivedOnly?: boolean
+    readonly offset?: number
+    readonly limit?: number
+  } = {}): TeamTaskView[] {
+    return this.tasks.list(this.roster.membership(caller), options)
   }
 
   /**
