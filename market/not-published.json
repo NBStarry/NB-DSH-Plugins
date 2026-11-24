@@ -1,0 +1,6 @@
+{
+  "forks/dsh-compaction-policy": "Forked upstream implementation; not reviewed for market distribution.",
+  "forks/dsh-plugin-notify-local": "Local notification fork; not approved for market distribution.",
+  "plugins/codex-accounts": "Private local account integration; not for market distribution.",
+  "plugins/team-only": "Same npm package name as published plugins/team-policy; retained as a separate workspace exception pending an explicit naming decision."
+}

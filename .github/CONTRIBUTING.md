@@ -46,4 +46,4 @@ development material from accidental addition. It is not an access boundary.
 Do not use force-add to bypass it; verify rules with synthetic paths in a clean
 checkout.
 
-No launcher or CI workflow is maintained by this repository.
+Market admission, PR checks, and publishing: [market/README.md](../market/README.md). Creating the `market-check` workflow does not make it required; a maintainer must enable branch protection on `main` and select `market-check` (no repository setting is changed here).

@@ -24,22 +24,78 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out exact event commit with history
+        uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '24'
+
+      - name: Resolve base
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          BASE_SHA=""
+          if [ "$EVENT_NAME" = "push" ] && [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+            BASE_SHA="$BEFORE_SHA"
+          fi
+          if [ -z "$BASE_SHA" ] && git rev-parse HEAD^ >/dev/null 2>&1; then
+            BASE_SHA=$(git rev-parse HEAD^)
+          fi
+          echo "BASE_SHA=$BASE_SHA" >> "$GITHUB_ENV"
+          echo "Base: ${BASE_SHA:-<none; coverage only>}"
+
       - name: Install validator dependencies
         run: npm ci --prefix market --ignore-scripts
+
       - name: Test generator
         run: node market/test.mjs
-      - name: Generate and validate index from checked-out commit
+
+      - name: Test market checks and deployment verifier
+        run: node --test market/check.test.mjs market/verify-deployed.test.mjs
+
+      - name: Check exact candidate coverage and version movement
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${BASE_SHA:-}" ]; then
+            node market/check.mjs "$GITHUB_SHA" "$BASE_SHA"
+          else
+            node market/check.mjs "$GITHUB_SHA"
+          fi
+
+      - name: Generate and validate from exact candidate
         run: |
           node market/generate.mjs "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$RUNNER_TEMP/plugin-index/index.json"
           node market/validate.mjs "$RUNNER_TEMP/plugin-index/index.json"
-      - uses: actions/upload-pages-artifact@v3
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
           path: ${{ runner.temp }}/plugin-index
-      - id: deployment
+
+      - name: Reject stale rerun against remote main
+        shell: bash
+        run: |
+          set -euo pipefail
+          REMOTE_MAIN=$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" refs/heads/main | awk '{print $1}')
+          test -n "$REMOTE_MAIN"
+          if [ "$REMOTE_MAIN" != "$GITHUB_SHA" ]; then
+            echo "Refusing deployment: run candidate $GITHUB_SHA is not current remote main $REMOTE_MAIN"
+            exit 1
+          fi
+
+      - name: Deploy Pages
+        id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Verify canonical published index
+        run: node market/verify-deployed.mjs "$RUNNER_TEMP/plugin-index/index.json"
