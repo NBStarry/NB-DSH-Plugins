@@ -1,0 +1,3 @@
+- insert:
+    - id: steward-host
+      name: '@local/steward-host'

@@ -1,0 +1,8 @@
+import {spawn} from 'node:child_process';
+// Script is constant. No path, name, session identifier or receipt becomes executable script.
+const script=`on run argv
+set r to display dialog (item 1 of argv) buttons {"取消", "在此根会话领办"} default button "取消" cancel button "取消" giving up after 60
+return (not gave up of r) and (button returned of r is "在此根会话领办")
+end run`;
+export function claimLocal({workspaceId,sessionId,path},signal){if(process.platform!=='darwin'||signal.aborted)return false;const text='申请不是授权。仅当下列工作区和根会话就是你要交办并收回答案的位置时，选择领办。\n工作区：'+JSON.stringify(path)+'\n工作区标识：'+workspaceId+'\n原根会话：'+sessionId+'\n仅一题：这两天按什么口径出周报？合计 / 日均。领办后仍需本人在手机 QQ 和本机确认。';return new Promise(resolve=>{const p=spawn('/usr/bin/osascript',['-e',script,'--',text],{signal,timeout:63000,stdio:['ignore','pipe','ignore'],env:{PATH:'/usr/bin:/bin'}});let out='';p.stdout.on('data',d=>out=(out+d).slice(-32));p.once('error',()=>resolve(false));p.once('close',n=>resolve(n===0&&out.trim()==='true'))})}
+export function registerRequest(ctx,{resolve,used,claim,assign,run}){let busy=false;return ctx.commands.register({name:'steward-trial',description:'申请在当前根会话领办一题（须本机确认）',recordInput:false,async handler(inv){const no={kind:'error',text:'未发起：位置、参数、确认或试次不符。'};if(busy||inv.signal.aborted||inv.rawInput.trim()||inv.attachments.length||used())return no;busy=true;try{const a=await resolve(inv.agent);if(!a||!await claim(a,inv.signal)||inv.signal.aborted||used())return no;const b=await resolve(inv.agent);if(!b||a.sessionId!==b.sessionId||a.workspaceId!==b.workspaceId||a.path!==b.path||inv.signal.aborted)return no;const id=assign(b);return {kind:'success',text:'本机已领办，单题状态：'+await run(id,b.sessionId)}}catch{return no}finally{busy=false}}})}
