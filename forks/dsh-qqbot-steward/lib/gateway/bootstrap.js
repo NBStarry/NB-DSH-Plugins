@@ -48,8 +48,8 @@ export async function bootstrapGateway(ctx, agents, config, logger) {
     });
     logger.info(`QQBot SDK initialized (UA: ${userAgent})`);
     // ── 中间件链 ──
-    const bridge = config.stewardDecisions === true ? stewardBridge(ctx, bot, config, manager) : undefined;
-    setupMiddlewares(bot, config, manager, logger, bridge?.inbound, bridge?.verification);
+    const bridge = stewardBridge(ctx, bot, config, manager);
+    setupMiddlewares(bot, config, manager, logger, bridge.inbound, bridge.verification);
     // ── 入站：经过中间件链后的消息交给 dsh agent ──
     bot.on('message', async (mCtx) => {
         const msg = mCtx.message;
@@ -132,7 +132,7 @@ export async function bootstrapGateway(ctx, agents, config, logger) {
     // TypeError（profiles 增量安装可能残留旧版 SDK）——降级为跳过监听而非崩溃
     try {
         bot.on('disconnected', (event) => {
-            bridge?.offline();
+            bridge.offline();
             const detail = `code=${event.code}${event.reason ? ` reason=${event.reason}` : ''}`;
             if (event.willReconnect) {
                 logger.warn(`Bot disconnected (${detail}), reconnecting...`);
@@ -143,11 +143,11 @@ export async function bootstrapGateway(ctx, agents, config, logger) {
         });
     }
     catch (err) {
-        bridge?.dispose();
+        bridge.dispose();
         logger.warn(`qqbot-nodejs SDK 不支持 disconnected 事件（请升级 @tencent-connect/qqbot-nodejs 至 1.0.5+）: ${err instanceof Error ? err.message : String(err)}`);
     }
     bot.on('ready', () => {
-        bridge?.ready();
+        bridge.ready();
         console.log(`[im-qqbot] Bot ready! appId=${config.appId}`);
     });
     // ── 富媒体过期清理 ──
@@ -164,12 +164,12 @@ export async function bootstrapGateway(ctx, agents, config, logger) {
         .effect(() => {
         logger.info(`Starting bot (appId=${config.appId})`);
         bot.start().catch((err) => {
-            bridge?.dispose();
+            bridge.dispose();
             logger.error(`Bot start failed: ${err instanceof Error ? err.message : String(err)}`);
         });
         return async () => {
             logger.info('Shutting down');
-            bridge?.dispose();
+            bridge.dispose();
             await manager.disposeAll();
             bot.stop();
         };

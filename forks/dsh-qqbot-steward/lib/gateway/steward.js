@@ -10,7 +10,7 @@ function timestamp(value) {
 export function stewardBridge(ctx, bot, config, manager) {
     const get = () => ctx.get('stewardDecisionConsumer');
     const current = (owner) => { const live = get(); return !!live && (live === owner || typeof owner.instanceToken === 'symbol' && live.instanceToken === owner.instanceToken); };
-    const self = () => config.stewardDecisions === true && config.access.c2cMode === 'allowlist' && config.access.c2cAllow.length === 1 ? config.access.c2cAllow[0] : undefined;
+    const self = () => config.access.c2cMode === 'allowlist' && config.access.c2cAllow.length === 1 ? config.access.c2cAllow[0] : undefined;
     let online = false, closed = false, epoch = 0, detach;
     let route;
     let confirmed, challenge;
@@ -105,7 +105,7 @@ export function stewardBridge(ctx, bot, config, manager) {
             }
             // Reserved exact command never reaches history, native answers, debug message logging or agent.
             const match = typeof m.content === 'string' && /^总管核对 ([A-Za-z0-9_-]{32})$/u.exec(m.content);
-            if (typeof m.content !== 'string' || !/^\s*总管核对(?:\s|$)/u.test(m.content))
+            if (!match && (!challenge || typeof m.content !== 'string' || !/^\s*总管核对(?:\s|$)/u.test(m.content)))
                 return next();
             c.stop('steward-verification');
             if (!match)

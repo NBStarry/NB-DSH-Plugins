@@ -85,7 +85,6 @@ export interface ImQQBotConfig {
     /** 是否展示工具调用成功结果（工具错误始终展示） */
     showToolResults: boolean;
     /** 调试模式 */
-    stewardDecisions?: boolean;
     debug: boolean;
     /** 富媒体理解（图片/视频） */
     media: MediaConfig;

@@ -1,5 +1,7 @@
 <div align="center">
 
+单题总管：配套 Steward Host 就绪后，在要接收答案的普通 DSH 根会话手动输入 `/steward-trial`。无需功能开关；须本人领办、在本机与已绑定的唯一本人私聊核对后，才可发送这一题。安装、启动和重连不会自动领办或发题。
+
 <img width="120" src="https://img.shields.io/badge/🤖-QQ_Bot-blue?style=for-the-badge" alt="QQ Bot" />
 
 **基于 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) (dsh) 的 QQ Bot 插件，将 DeepSeek AI 助手接入 QQ 私聊与群聊。**
