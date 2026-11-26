@@ -1,6 +1,6 @@
 import {grantLab} from './lib/grant-lab/index.mjs';
 export function createRuntime({db,core,showLocal,deliver}){
- let owner=null,detach=null,pending=false,permitted=null,closed=false;
+ let ticket=null,owner=null,detach=null,pending=false,permitted=null,closed=false;
  db.exec("CREATE TABLE IF NOT EXISTS first_trial(slot INTEGER PRIMARY KEY CHECK(slot=1),task TEXT NOT NULL,session TEXT NOT NULL,phase TEXT NOT NULL,question TEXT)");
  const current=()=>owner?.current()??null;
  const g=grantLab({db,core,owner:{current},deliver:r=>{const c=owner,b=current();const valid=()=>{const x=current(),g=db.prepare('SELECT * FROM local_once WHERE q=?').get(r.questionId);if(closed||owner!==c||!b||!x?.unique||!x.confirmed||x.scope!=='c2c'||x.appId!==b.appId||x.userOpenId!==b.userOpenId||x.bindingId!==b.bindingId||g?.epoch!==x.bindingId||g.spent!==1||g.revoked||g.expiry<=Date.now())throw Error('authorization changed')};valid();return deliver(r,valid)},localConfirm:async info=>permitted===info.questionId});
@@ -10,8 +10,8 @@ export function createRuntime({db,core,showLocal,deliver}){
  const ref=typeof input.reference==='string'&&input.reference.length<=256&&/^\S+$/.test(input.reference)?input.reference:null;
  const short=typeof input.shortCode==='string'&&/^[a-f0-9]{8}$/.test(input.shortCode)?input.shortCode:null;
  return (ref!==null||short!==null)&&!!owned.get(input.bindingKey,ref,short);}
- const service={instanceToken:Symbol(),ownsReply,attach(c){if(closed||owner||['current','beginVerification','sendSelfDecision','revoke'].some(k=>typeof c?.[k]!=='function'))throw Error('no verified owner');owner=c;return ()=>{if(owner===c){detach?.();detach=null;owner=null;permitted=null}}},receive:e=>detach?g.service.receive(e):false};
- return {service,async run(taskId,sessionId){if(closed||pending||!owner)return 'blocked';pending=true;const c=owner;
+ const service={instanceToken:Symbol(),ownsReply,attach(c){if(closed||owner||['current','beginVerification','sendSelfDecision','revoke'].some(k=>typeof c?.[k]!=='function'))throw Error('no verified owner');ticket=Symbol();owner=c;return ()=>{if(owner===c){detach?.();detach=null;owner=null;ticket=null;permitted=null}}},receive:e=>detach?g.service.receive(e):false};
+ return {service,ready:()=>!closed&&!pending&&owner?ticket:null,async run(taskId,sessionId){if(closed||pending||!owner)return 'blocked';pending=true;const c=owner;
  try{if(!db.prepare("INSERT OR IGNORE INTO first_trial VALUES(1,?,?,'challenge',NULL)").run(taskId,sessionId).changes)return 'manual-review';const ch=c.beginVerification();if(!ch||!/^[-_A-Za-z0-9]{32}$/.test(ch.code)||c.current()!==null)return 'blocked';
  const ok=await showLocal({taskId,code:ch.code,expiresAt:ch.expiresAt});const b=c.current();if(ok!==true||closed||owner!==c||Date.now()>=ch.expiresAt||!b?.unique||!b.confirmed||b.scope!=='c2c')return 'blocked';
  detach?.();const epoch=b.bindingId;detach=g.service.attach({bindingKey:c.bindingKey,sendSelfDecision:req=>c.current()?.bindingId===epoch?c.sendSelfDecision({...req,bindingId:epoch}):{state:'blocked'}});
