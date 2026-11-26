@@ -48,6 +48,27 @@ export async function bootstrapGateway(ctx, agents, config, logger) {
     });
     logger.info(`QQBot SDK initialized (UA: ${userAgent})`);
     // ── 中间件链 ──
+    // Capture one app/peer for this gateway lifetime; never redirect after a config change.
+    const one = () => config.access.c2cMode === 'allowlist' && config.access.c2cAllow.length === 1 ? config.access.c2cAllow[0] : undefined;
+    const peer = one(), app = config.appId, usable = (x) => typeof x === 'string' && x.length > 0 && x.length <= 256 && x !== '*' && !/\s/.test(x);
+    let phase = 'waiting', outage = '';
+    async function notice(message) {
+        if (!usable(app) || !usable(peer) || config.appId !== app || one() !== peer)
+            return;
+        try {
+            await bot.sendText({ scope: 'c2c', targetId: peer }, message);
+        }
+        catch { /* one attempt; delivery may be unknown */ }
+    }
+    function reportReady() {
+        if (phase === 'up' || phase === 'closed')
+            return;
+        const at = new Date().toISOString();
+        phase = 'up';
+        bridge.ready();
+        void notice(outage ? 'QQ 已恢复。中断：' + outage + '；恢复：' + at : 'QQ 已上线：' + at);
+        outage = '';
+    }
     const bridge = stewardBridge(ctx, bot, config, manager);
     setupMiddlewares(bot, config, manager, logger, bridge.inbound, bridge.verification);
     // ── 入站：经过中间件链后的消息交给 dsh agent ──
@@ -133,6 +154,11 @@ export async function bootstrapGateway(ctx, agents, config, logger) {
     try {
         bot.on('disconnected', (event) => {
             bridge.offline();
+            if (phase === 'up') {
+                phase = 'down';
+                outage = new Date().toISOString();
+                void notice('QQ 连接中断：' + outage);
+            }
             const detail = `code=${event.code}${event.reason ? ` reason=${event.reason}` : ''}`;
             if (event.willReconnect) {
                 logger.warn(`Bot disconnected (${detail}), reconnecting...`);
@@ -146,8 +172,10 @@ export async function bootstrapGateway(ctx, agents, config, logger) {
         bridge.dispose();
         logger.warn(`qqbot-nodejs SDK 不支持 disconnected 事件（请升级 @tencent-connect/qqbot-nodejs 至 1.0.5+）: ${err instanceof Error ? err.message : String(err)}`);
     }
+    bot.on('resumed', () => { if (phase === 'down')
+        reportReady(); });
     bot.on('ready', () => {
-        bridge.ready();
+        reportReady();
         console.log(`[im-qqbot] Bot ready! appId=${config.appId}`);
     });
     // ── 富媒体过期清理 ──
@@ -169,7 +197,18 @@ export async function bootstrapGateway(ctx, agents, config, logger) {
         });
         return async () => {
             logger.info('Shutting down');
+            const wasUp = phase === 'up';
+            phase = 'closed';
             bridge.dispose();
+            if (wasUp) {
+                let deadline;
+                try {
+                    await Promise.race([notice('QQ 即将下线：' + new Date().toISOString()), new Promise(r => { deadline = setTimeout(r, 1200); })]);
+                }
+                finally {
+                    clearTimeout(deadline);
+                }
+            }
             await manager.disposeAll();
             bot.stop();
         };

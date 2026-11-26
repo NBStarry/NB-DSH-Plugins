@@ -2,6 +2,8 @@
 
 单题总管：配套 Steward Host 就绪后，在要接收答案的普通 DSH 根会话手动输入 `/steward-trial`。无需功能开关；须本人领办、在本机与已绑定的唯一本人私聊核对后，才可发送这一题。安装、启动和重连不会自动领办或发题。
 
+运行状态通知与业务题独立，无开关：有唯一已绑定本人私聊时，成功上线、连接中断、成功恢复、正常退出前会尝试通知。重复握手或重连尝试不逐条提示，故障时间是本进程观察时刻（UTC）。通知只试一次，不保证到达；退出最多等待通知 1.2 秒。断电或崩溃无法即时通知或推算离线时间，新进程成功上线再报上线。收件人绑定变化时不改投。
+
 <img width="120" src="https://img.shields.io/badge/🤖-QQ_Bot-blue?style=for-the-badge" alt="QQ Bot" />
 
 **基于 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) (dsh) 的 QQ Bot 插件，将 DeepSeek AI 助手接入 QQ 私聊与群聊。**
